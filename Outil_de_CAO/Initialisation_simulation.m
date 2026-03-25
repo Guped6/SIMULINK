@@ -126,6 +126,25 @@ sat_mod_pos_min = 0;
 
 
 
+% OBTENIR UNIQUEMENT LES PARAMÈTRES DE FONCTION TRANSFERT
+
+Kp = -0.69553;
+Tw = 0.013106;
+zeta = 0.079992;
+
+num_proc = [0,0,0,-2365575.26407082,-23596424.4747652,-9504262175.32001,-113750992077.689];
+denom_proc = [1,551.329784176462,25092.4669239778,5556154.83244325,117762820.943339,13657291814.2789,114001597319.831];
+
+G_proc_pos = tf(num_proc, denom_proc);
+Gz_proc_pos = c2d(G_proc_pos, 1/600, 'tustin');
+[num_pid_proc_pos, denom_pid_proc_pos] = tfdata(Gz_proc_pos, 'v');
+
+sat_proc_max = 14e-3;
+
+sat_proc_min = 0;
+
+ref_pos_proc = 8e-3;
+
 % =========================================================================
 % MODÉLISATION ARDUINO
 
@@ -158,6 +177,22 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
 [num_pid_pos, denom_pid_pos] = tfdata(Gz_pos, 'v');
 
+
+%NOUVELLE VALEUR POUR RÉGULATEUR POSITION
+facteur_capteur = 200; % Ajuste avec la vraie valeur du capteur si différente
+
+kp_pos = -4.5499e-06 * facteur_capteur;
+ki_pos = -7.5239e-05 * facteur_capteur;
+kd_pos =  5.7547e-07 * facteur_capteur;
+
+%NOUVELLE VALEUR POUR RÉGULATEUR COURANT
+facteur_pwm = 1023 / 5;
+
+kp_courant = 0.60452 * facteur_pwm; 
+ki_courant = 127.481 * facteur_pwm;
+
+upperlim_cou = 1023;
+lowerlim_cou = 0;
 
 % =========================================================================
 % MODÉLISATION ACTIONNEUR LINÉAIRE
