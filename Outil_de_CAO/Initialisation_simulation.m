@@ -125,23 +125,6 @@ sat_mod_pos_max = 5;
 sat_mod_pos_min = 0;
 
 
-% =========================================================================
-% MODÉLISATION PROCÉDÉ (lame) (Poutre Euler–Bernoulli -> State-Space)
-% =========================================================================
-
-% Masse déposée (entrée utilisateur). Exemple: 21.2 g
-m_charge = 21.2e-3;   % [kg]  
-
-% Construit A,B,C,D pour Simulink
-[A_ss, B_ss, C_ss, D_ss, beam_ss, info_beam] = beam_build_ss(m_charge);
-
-% Conditions initiales du State-Space (x0 = [w(0); v(0)])
-x0_beam = zeros(size(A_ss,1),1);
-
-% (Optionnel) Saturations / références si tu les utilises encore ailleurs
-sat_proc_max = 14e-3;
-sat_proc_min = 0;
-ref_pos_proc = 8e-3;
 
 % OBTENIR UNIQUEMENT LES PARAMÈTRES DE FONCTION TRANSFERT
 
