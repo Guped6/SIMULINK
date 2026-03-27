@@ -198,15 +198,23 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 %NOUVELLE VALEUR POUR RÉGULATEUR POSITION
 facteur_capteur = 200; % Ajuste avec la vraie valeur du capteur si différente
 
-kp_pos = -4.5499e-06 * facteur_capteur;
-ki_pos = -7.5239e-05 * facteur_capteur;
-kd_pos =  5.7547e-07 * facteur_capteur;
+kp_pos = 0.8;
+ki_pos = 0;
+kd_pos =  0;
+Tech_pos = 0.02;
+
+SORTIE_POS_MIN = -511.0;
+SORTIE_POS_MAX = 512.0;
 
 %NOUVELLE VALEUR POUR RÉGULATEUR COURANT
 facteur_pwm = 1023 / 5;
 
-kp_courant = 0.60452 * facteur_pwm; 
-ki_courant = 127.481 * facteur_pwm;
+kp_courant = 0.9; 
+ki_courant = 25.0;
+Tech = 0.002;
+
+limVampinf = -511.0;
+limVampmax = 512.0;
 
 upperlim_cou = 1023;
 lowerlim_cou = 0;
