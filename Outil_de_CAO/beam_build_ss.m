@@ -5,7 +5,7 @@ sat_proc_max = 1;
 sat_proc_min = -1;
 
 %% masse mesurée en entrée du simulink
-bloc_entree_masse = 'Simulation_balancenew2024/Masse (kg)';
+bloc_entree_masse = 'Simulation_balanceversionajour2024_avec_statespace/Masse (kg)';
 block_value_str = get_param(bloc_entree_masse, 'Value');
 masse_simulink = str2double(block_value_str);
 
