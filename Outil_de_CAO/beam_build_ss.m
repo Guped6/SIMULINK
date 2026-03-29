@@ -5,9 +5,9 @@ sat_proc_max = 1;
 sat_proc_min = -1;
 
 %% masse mesurée en entrée du simulink
-bloc_entree_masse = 'Simulation_balanceversionajour2024_avec_statespace/Masse (kg)';
+bloc_entree_masse = 'Simulation_balanceversionajour2024_avec_statespace/Masse (g)';
 block_value_str = get_param(bloc_entree_masse, 'Value');
-masse_simulink = str2double(block_value_str);
+masse_simulink = str2double(block_value_str)/1000;
 
 %% Paramètres de La poutre et du matériau
 b = 7.1e-2;      % Base 6 cm (selon ton code: 7.1 cm)
