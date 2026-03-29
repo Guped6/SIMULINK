@@ -179,19 +179,16 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
 
 %NOUVELLE VALEUR POUR RÉGULATEUR POSITION
-facteur_capteur = 200; % Ajuste avec la vraie valeur du capteur si différente
 
 kp_pos = 2.325;
 ki_pos = -27.5;
-kd_pos = 0.207;
-tau_f = 0.09;
+kd_pos = -0.207;
 Tech_pos = 0.02;
 
 SORTIE_POS_MIN = -511.0;
 SORTIE_POS_MAX = 512.0;
 
 %NOUVELLE VALEUR POUR RÉGULATEUR COURANT
-facteur_pwm = 1023 / 5;
 
 kp_courant = -0.575; 
 ki_courant = -325;
@@ -200,8 +197,6 @@ Tech = 0.002;
 limVampinf = -511.0;
 limVampmax = 512.0;
 
-upperlim_cou = 1023;
-lowerlim_cou = 0;
 
 % =========================================================================
 % MODÉLISATION ACTIONNEUR LINÉAIRE

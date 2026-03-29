@@ -35,8 +35,8 @@ masse = masse_simulink + masse_bobine_et_plaque; % Actionneur
 masse_aimant = 1/1000; % Aimant au bout
 
 %c_amortissement = 0.35; % Ton amortissement concentré en N*s/m
-alpha = 0.75;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
-beta = 0;              % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+alpha = 5.0;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.005;              % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
 %% 1. Création des matrices élémentaires de la poutre
 % Basé sur les équations (9) et (10) du document
