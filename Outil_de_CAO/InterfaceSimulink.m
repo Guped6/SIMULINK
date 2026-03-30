@@ -11,20 +11,53 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         ArrtersimulationButton      matlab.ui.control.Button
         DmarrersimulationButton     matlab.ui.control.Button
         ClearButton                 matlab.ui.control.Button
-        TareButton                  matlab.ui.control.Button % <-- NOUVEAU BOUTON TARE
+        TareButton                  matlab.ui.control.Button
         UIAxes                      matlab.ui.control.UIAxes
+        
+        % --- LES GAINS SONT MAINTENANT DES SPINNERS ---
+        TitrePositionLabel          matlab.ui.control.Label
+        KpPosLabel                  matlab.ui.control.Label
+        KpPosEditField              matlab.ui.control.Spinner
+        KiPosLabel                  matlab.ui.control.Label
+        KiPosEditField              matlab.ui.control.Spinner
+        KdPosLabel                  matlab.ui.control.Label
+        KdPosEditField              matlab.ui.control.Spinner
+        
+        TitreCourantLabel           matlab.ui.control.Label
+        KpCouLabel                  matlab.ui.control.Label
+        KpCouEditField              matlab.ui.control.Spinner
+        KiCouLabel                  matlab.ui.control.Label
+        KiCouEditField              matlab.ui.control.Spinner
     end
 
     % Propriétés privées pour gérer l'animation du graphique
     properties (Access = private)
-        PlotTimer                   % Minuteur pour rafraîchir les données
-        LiveLine                    % Objet graphique représentant la courbe
-        TimeOffset = 0;             % Mémoire du temps pour la continuité
-        TareValue = 0;              % <-- NOUVELLE MÉMOIRE POUR LA TARE
+        PlotTimer                   
+        LiveLine                    
+        TimeOffset = 0;             
+        TareValue = 0;              
     end
 
-    % Callbacks that handle component events
     methods (Access = private)
+
+        % Fonction de mise à jour des gains en direct
+        function GainValueChanged(app, ~)
+            try
+                assignin('base', 'kp_pos', app.KpPosEditField.Value);
+                assignin('base', 'ki_pos', app.KiPosEditField.Value);
+                assignin('base', 'kd_pos', app.KdPosEditField.Value);
+                
+                assignin('base', 'kp_courant', app.KpCouEditField.Value);
+                assignin('base', 'ki_courant', app.KiCouEditField.Value);
+                
+                status = get_param('Simulation_balanceversionajour2024_avec_statespace','SimulationStatus');
+                if strcmp(status, 'running')
+                    set_param('Simulation_balanceversionajour2024_avec_statespace', 'SimulationCommand', 'update');
+                end
+            catch ME
+                disp(['Erreur lors de la mise à jour des gains : ', ME.message]);
+            end
+        end
 
         % Fonction de mise à jour de l'oscilloscope
         function updatePlot(app)
@@ -40,11 +73,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                         
                         if ~isempty(rto)
                             valeur_brute = double(rto.InputPort(1).Data);
-                            
-                            % --- APPLICATION DE LA TARE ---
                             valeur_affichee = valeur_brute - app.TareValue;
                             
-                            % Mettre à jour les données
                             app.LiveLine.XData = [app.LiveLine.XData, t_continu];
                             app.LiveLine.YData = [app.LiveLine.YData, valeur_affichee];
                             app.MassemesuregEditField.Value = valeur_affichee;
@@ -65,22 +95,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
         end
 
-        % --- NOUVELLE FONCTION : BOUTON TARE ---
+        % Fonction Tare
         function TareButtonPushed(app, ~)
-            % On lit la valeur actuellement affichée
             valeur_actuelle = app.MassemesuregEditField.Value;
-            
-            % On l'ajoute à la mémoire de la Tare
             app.TareValue = app.TareValue + valeur_actuelle;
-            
-            % On décale tout l'historique de la ligne graphique vers le bas
-            % pour éviter que le graphique ne fasse un gros saut laid
             app.LiveLine.YData = app.LiveLine.YData - valeur_actuelle;
-            
-            % On met la case numérique à 0 immédiatement
             app.MassemesuregEditField.Value = 0;
-            
-            disp(['Tare effectuée. Soustraction de : ', num2str(app.TareValue), ' g']);
         end
 
         % Bouton Arrêter 
@@ -111,6 +131,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 set_param('Simulation_balanceversionajour2024_avec_statespace/Masse (g)', 'Value', valeur_texte);
                 
                 evalin('base', 'Initialisation_simulation'); 
+                GainValueChanged(app, []);
                 
                 set_param('Simulation_balanceversionajour2024_avec_statespace', 'SimulationCommand', 'start');
                 
@@ -131,10 +152,10 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 valeur_masse = num2str(app.EntreMassegEditField.Value);
                 set_param('Simulation_balanceversionajour2024_avec_statespace/Masse (g)', 'Value', valeur_masse);
                 evalin('base', 'Initialisation_simulation'); 
+                GainValueChanged(app, []);
             catch
             end
 
-            % Réinitialiser les données ET la Tare au démarrage
             app.TimeOffset = 0;
             app.TareValue = 0; 
             app.LiveLine.XData = [];
@@ -166,7 +187,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
     methods (Access = private)
         function createComponents(app)
             app.UIFigure = uifigure('Visible', 'off');
-            app.UIFigure.Position = [100 100 640 480];
+            app.UIFigure.Position = [100 100 800 480]; 
             app.UIFigure.Name = 'Interface Balance';
 
             app.UIAxes = uiaxes(app.UIFigure);
@@ -200,10 +221,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.ClearButton.Position = [160 354 123 23]; 
             app.ClearButton.Text = 'Effacer graphique';
 
-            % --- CRÉATION DU BOUTON TARE ---
             app.TareButton = uibutton(app.UIFigure, 'push');
             app.TareButton.ButtonPushedFcn = createCallbackFcn(app, @TareButtonPushed, true);
-            app.TareButton.Position = [270 264 60 23]; % Placé à gauche de Rafraîchir
+            app.TareButton.Position = [270 264 60 23];
             app.TareButton.Text = 'Tare (0)';
 
             app.EntreMasseKgLabel = uilabel(app.UIFigure);
@@ -212,6 +232,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.EntreMasseKgLabel.Text = 'Entrée Masse (g) ';
 
             app.EntreMassegEditField = uieditfield(app.UIFigure, 'numeric');
+            app.EntreMassegEditField.ValueDisplayFormat = '%.2f'; % <-- FORMAT 2 DÉCIMALES
             app.EntreMassegEditField.ValueChangedFcn = createCallbackFcn(app, @EntreMassegEditFieldValueChanged, true);
             app.EntreMassegEditField.Position = [145 305 100 22];
 
@@ -221,6 +242,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.MassemesuregEditFieldLabel.Text = 'Masse mesurée (g) ';
 
             app.MassemesuregEditField = uieditfield(app.UIFigure, 'numeric');
+            app.MassemesuregEditField.ValueDisplayFormat = '%.2f'; % <-- FORMAT 2 DÉCIMALES
             app.MassemesuregEditField.ValueChangedFcn = createCallbackFcn(app, @MassemesuregEditFieldValueChanged, true);
             app.MassemesuregEditField.Editable = 'off';
             app.MassemesuregEditField.Position = [154 265 100 22];
@@ -229,6 +251,72 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.RafrachirButton.ButtonPushedFcn = createCallbackFcn(app, @RafrachirButtonPushed, true);
             app.RafrachirButton.Position = [340 264 120 23];
             app.RafrachirButton.Text = 'Rafraîchir (Matrice)';
+
+            % =========================================================
+            % --- SECTION : GAINS (AVEC SPINNERS) ---
+            % =========================================================
+            app.TitrePositionLabel = uilabel(app.UIFigure);
+            app.TitrePositionLabel.Position = [600 380 150 22];
+            app.TitrePositionLabel.FontWeight = 'bold';
+            app.TitrePositionLabel.Text = 'Régulateur Position';
+
+            app.KpPosLabel = uilabel(app.UIFigure);
+            app.KpPosLabel.Position = [600 350 40 22];
+            app.KpPosLabel.Text = 'Kp :';
+            app.KpPosEditField = uispinner(app.UIFigure); % <-- SPINNER
+            app.KpPosEditField.Position = [640 350 80 22];
+            app.KpPosEditField.Value = 2.325;
+            app.KpPosEditField.Step = 0.1; % Taille du saut
+            app.KpPosEditField.ValueDisplayFormat = '%.3f';
+            app.KpPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+
+            app.KiPosLabel = uilabel(app.UIFigure);
+            app.KiPosLabel.Position = [600 320 40 22];
+            app.KiPosLabel.Text = 'Ki :';
+            app.KiPosEditField = uispinner(app.UIFigure);
+            app.KiPosEditField.Position = [640 320 80 22];
+            app.KiPosEditField.Value = -27.5;
+            app.KiPosEditField.Step = 0.5;
+            app.KiPosEditField.ValueDisplayFormat = '%.2f';
+            app.KiPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+
+            app.KdPosLabel = uilabel(app.UIFigure);
+            app.KdPosLabel.Position = [600 290 40 22];
+            app.KdPosLabel.Text = 'Kd :';
+            app.KdPosEditField = uispinner(app.UIFigure);
+            app.KdPosEditField.Position = [640 290 80 22];
+            app.KdPosEditField.Value = -0.207;
+            app.KdPosEditField.Step = 0.01;
+            app.KdPosEditField.ValueDisplayFormat = '%.3f';
+            app.KdPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+
+            % ========================================================
+            % --- SECTION : GAINS DE LA BOUCLE DE COURANT ---
+            % ========================================================
+            app.TitreCourantLabel = uilabel(app.UIFigure);
+            app.TitreCourantLabel.Position = [600 240 150 22];
+            app.TitreCourantLabel.FontWeight = 'bold';
+            app.TitreCourantLabel.Text = 'Régulateur Courant';
+
+            app.KpCouLabel = uilabel(app.UIFigure);
+            app.KpCouLabel.Position = [600 210 40 22];
+            app.KpCouLabel.Text = 'Kp :';
+            app.KpCouEditField = uispinner(app.UIFigure);
+            app.KpCouEditField.Position = [640 210 80 22];
+            app.KpCouEditField.Value = -0.575;
+            app.KpCouEditField.Step = 0.05;
+            app.KpCouEditField.ValueDisplayFormat = '%.3f';
+            app.KpCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+
+            app.KiCouLabel = uilabel(app.UIFigure);
+            app.KiCouLabel.Position = [600 180 40 22];
+            app.KiCouLabel.Text = 'Ki :';
+            app.KiCouEditField = uispinner(app.UIFigure);
+            app.KiCouEditField.Position = [640 180 80 22];
+            app.KiCouEditField.Value = -325;
+            app.KiCouEditField.Step = 5;
+            app.KiCouEditField.ValueDisplayFormat = '%.1f';
+            app.KiCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
 
             app.UIFigure.Visible = 'on';
         end
