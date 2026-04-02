@@ -220,3 +220,7 @@ x_table = LUT_Table{:,2};
 % PARAMÈTRES DE SIMULATION INHÉRENTS À SIMULINK
 
 step_time = 1/750000;
+
+% =========================================================================
+% COEFFICIENTS DE CALIBRATION
+calib_coeffs = [-4.148121340281826, 11.452578178670109, 62.262097549696314, 0.5281482801225327];
