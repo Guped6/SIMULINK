@@ -9,8 +9,7 @@ sat_proc_min = -1;
 b = 7.08e-2;      % Base
 h = 1.5875e-3;   % Hauteur
 L = 24.3e-2;     % Longueur
-%E = 18.6e9;      % Module de Young
-E = 18.6e10;
+E = 18.6e9;      % Module de Young
 dens = 1850;     % Densité Kg/m^3
 mu = dens*b*h;   % Masse linéique kg/m (rho * A_ss)
 A_b = b*h;       % Aire de la section
@@ -26,12 +25,12 @@ faire_fft = false;
 plot_position = false;
 
 %% Paramètres des masses et forces
-pos_actionneur_et_masse = 0.146; % Position en mètre
-masse_bobine_et_plaque = 40/1000;
+pos_actionneur_et_masse = 0.1345; % Position en mètre
+masse_bobine_et_plaque = 61/1000;
 masse_aimant = 1/1000; % Aimant au bout
 
-alpha = 1.4;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
-beta = 0.001;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+alpha = 0.70886;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.0025;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
 %% 0. Initialiser les matrices 3D pour les tables
 % Plage de masse de 0 à 100g par bonds de 1g
@@ -149,19 +148,43 @@ for i = 1:ne
     F_gravite_g(idx) = F_gravite_g(idx) + F_elem_grav;
 end
 
-% MODIFICATION : On ne compte QUE la gravité de la plaque (40g) pour la position de repos statique de base
-% La gravité de la masse ajoutée (masse_simulink) sera gérée dynamiquement en entrée du bloc LPV
+% MODIFICATION : On ne compte QUE la gravité de la plaque (61g)
 F_gravite_g(ddl_act) = F_gravite_g(ddl_act) - masse_bobine_et_plaque * g;
 F_gravite_g(ddl_bout) = F_gravite_g(ddl_bout) - masse_aimant * g;
-
 F_gravite_f = F_gravite_g(ddl_libres);
-K_f_base = K_g_base(ddl_libres, ddl_libres); % K ne dépend pas de la masse
+K_f_base = K_g_base(ddl_libres, ddl_libres); 
 deplacement_statique = K_f_base \ F_gravite_f;
 
-repos_actionneur = deplacement_statique(idx_force_reduit);
-repos_bout = deplacement_statique(idx_bout_reduit);
+% === CALCUL AUTOMATIQUE DE LA CIBLE POUR 2.16V (AVEC LE VRAI CAPTEUR) ===
+V_cible = 2.16; % Ta nouvelle tension cible au repos
+
+% On utilise LE MÊME polynôme que ton script initialisation_simulateur a généré !
+% Le polynôme est P(x) = ax^3 + bx^2 + cx + d. 
+% Pour trouver P(x) = 2.22, on soustrait 2.22 à 'd'.
+coeff_poly = tension_selon_distance; % Importe les coefficients du Workspace
+coeff_poly(end) = coeff_poly(end) - V_cible; % Soustrait la cible au terme constant
+
+% Trouver les racines (positions possibles) du polynôme
+racines = roots(coeff_poly);
+
+% On garde la racine réelle qui a du sens physiquement
+racines_reelles = racines(imag(racines) == 0);
+
+% IMPORTANT : Les données de calibration montrent que plus la tension monte, 
+% plus la distance (en mm) baisse. Le capteur est donc inversé.
+% On cherche la position la plus logique pour ton montage.
+[~, idx_min] = min(abs(racines_reelles));
+cible_repos_m = racines_reelles(idx_min);
+
+% === AJUSTEMENT GÉOMÉTRIQUE AU BOUT DE LA LAME ===
+% Puisque le capteur est au BOUT, on ajuste l'encastrement par rapport au BOUT
+hauteur_encastrement_m = cible_repos_m - deplacement_statique(idx_bout_reduit);
+
+repos_actionneur = hauteur_encastrement_m + deplacement_statique(idx_force_reduit);
+repos_bout = hauteur_encastrement_m + deplacement_statique(idx_bout_reduit);
 
 fprintf('\n--- Positions de repos statique (Sans masse ajoutée) ---\n');
+fprintf('Position cible pour %g V : %g mm\n', V_cible, cible_repos_m * 1000);
 fprintf('Déflexion à l''actionneur : %g mm\n', repos_actionneur * 1000);
 fprintf('Déflexion au bout de la lame : %g mm\n\n', repos_bout * 1000);
 

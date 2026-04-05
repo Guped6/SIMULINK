@@ -181,10 +181,13 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
 %NOUVELLE VALEUR POUR RÉGULATEUR POSITION
 
-kp_pos = 2.325;
-ki_pos = 27.5;
-kd_pos = 0.207;
+%kp_pos = 0.6655;
+kp_pos = 0.1;
+ki_pos = 0;
+kd_pos = 0.001;
 Tech_pos = 0.02;
+
+
 
 SORTIE_POS_MIN = -511.0;
 SORTIE_POS_MAX = 512.0;
