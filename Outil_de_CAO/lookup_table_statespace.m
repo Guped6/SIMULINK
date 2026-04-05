@@ -9,7 +9,8 @@ sat_proc_min = -1;
 b = 7.08e-2;      % Base
 h = 1.5875e-3;   % Hauteur
 L = 24.3e-2;     % Longueur
-E = 18.6e9;      % Module de Young
+%E = 18.6e9;      % Module de Young
+E = 18.6e10;
 dens = 1850;     % Densité Kg/m^3
 mu = dens*b*h;   % Masse linéique kg/m (rho * A_ss)
 A_b = b*h;       % Aire de la section
@@ -29,8 +30,8 @@ pos_actionneur_et_masse = 0.146; % Position en mètre
 masse_bobine_et_plaque = 40/1000;
 masse_aimant = 1/1000; % Aimant au bout
 
-alpha = 5;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
-beta = 0.05;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+alpha = 1.4;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.001;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
 %% 0. Initialiser les matrices 3D pour les tables
 % Plage de masse de 0 à 100g par bonds de 1g
