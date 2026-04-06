@@ -124,7 +124,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 assignin('base', 'num_pos', str2num(app.NumPosEditField.Value)); %#ok<ST2NM>
                 assignin('base', 'denom_pos', str2num(app.DenPosEditField.Value)); %#ok<ST2NM>
                 
-                assignin('base', 'gain_cou_', app.GainCouEditField.Value);
+                % --- CORRECTION ICI : 'gain_cou' au lieu de 'gain_cou_' ---
+                assignin('base', 'gain_cou', app.GainCouEditField.Value);
                 assignin('base', 'offset_cou', app.OffsetCouEditField.Value);
                 assignin('base', 'num_cou', str2num(app.NumCouEditField.Value)); %#ok<ST2NM>
                 assignin('base', 'denom_cou', str2num(app.DenCouEditField.Value)); %#ok<ST2NM>
@@ -227,6 +228,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 
                 set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'stop');
                 
+                % --- CORRECTION ICI : Pause pour laisser Simulink s'arrêter ---
+                pause(0.2);
+                
                 nouvelle_masse = app.EntreMassegEditField.Value;
                 set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(nouvelle_masse));
                 
@@ -284,20 +288,19 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.LiveLinePosition.YData = [];
             app.UIAxesPosition.XLim = [0 5]; 
         end
-
+        
         % =========================================================
         % SEQUENCE DE CALIBRATION
         % =========================================================
         
         % Demarrage de la sequence
         function DemarrerCalibPushed(app, ~)
-            % 1. Petite sécurité : on s'assure que la simulation tourne !
+            % Petite sécurité : on s'assure que la simulation tourne !
             status = get_param('Simulation_balance_poids_variable_realtime2024','SimulationStatus');
             if ~strcmp(status, 'running')
                 uialert(app.UIFigure, 'Veuillez démarrer la simulation dans l''onglet Accueil avant de calibrer.', 'Simulation à l''arrêt');
                 return;
             end
-
             app.CalibDataMasses = [];
             app.CalibDataTensions = [];
             app.IndexCalibration = 1;
@@ -311,12 +314,11 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             masse_req = app.MassesCibles(app.IndexCalibration);
             set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(masse_req));
             app.EntreMassegEditField.Value = masse_req; % Synchronise l'onglet accueil
-
             
             app.InstructionCalibLabel.Text = sprintf('Masse de %d g injectée. Attendez la stabilisation puis Enregistrez.', masse_req);
             app.InstructionCalibLabel.FontColor = [0 0 0]; % Noir
         end
-
+        
         % Enregistrement d'un point
         function AcquerirPointPushed(app, ~)
             if ~app.EnCalibration
@@ -345,15 +347,16 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 % Lance le calcul automatiquement
                 CalculerCalibPushed(app, []);
             else
+                % --- CORRECTION ICI : 'masse_suivante' utilisée partout ---
                 % Demande la masse suivante ET l'envoie à Simulink
                 masse_suivante = app.MassesCibles(app.IndexCalibration);
-                set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(masse_req));
-                app.EntreMassegEditField.Value = masse_req;
+                set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(masse_suivante));
+                app.EntreMassegEditField.Value = masse_suivante;
                 
                 app.InstructionCalibLabel.Text = sprintf('Masse de %d g injectée. Attendez la stabilisation puis Enregistrez.', masse_suivante);
             end
         end
-
+        
         % Calcul mathematique
         function CalculerCalibPushed(app, ~)
             if length(app.CalibDataMasses) < 2
