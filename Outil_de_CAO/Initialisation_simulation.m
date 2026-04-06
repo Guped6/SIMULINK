@@ -228,4 +228,17 @@ step_time = 1/750000;
 
 % =========================================================================
 % COEFFICIENTS DE CALIBRATION
-calib_coeffs = [-4.148121340281826, 11.452578178670109, 62.262097549696314, 0.5281482801225327];
+%calib_coeffs = [-4.148121340281826, 11.452578178670109, 62.262097549696314, 0.5281482801225327];
+
+% 1. Les valeurs lues sur ton Display AVANT le polynôme (Signal u)
+valeurs_u_entree = [-0.4948, 0.1031, 0.6969, 1.2879, 1.8769]; 
+
+% 2. Les vraies masses cibles en grammes (Ce qu'on veut afficher à la fin)
+vraies_masses_g = [0, 25, 50, 75, 100];
+
+% 3. Calcul du polynôme de calibration d'ordre 3
+nouveaux_coeffs = polyfit(valeurs_u_entree, vraies_masses_g, 3);
+
+% 4. Affichage du résultat
+disp('Voici tes nouveaux coefficients de calibration :');
+disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 décimales pour un maximum de précision
