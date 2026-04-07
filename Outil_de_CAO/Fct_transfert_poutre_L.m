@@ -5,30 +5,25 @@ clc
 tic
 % J'ai ajouté affichage_rapide, on voit moins bien en la poutre durant la simulation mais c'est bcp
 % plus vite et les résultats finaux sont identiques.
-
 % c est l'amortissement (+ haut = plus amorti), pas d'unité. Provient
 % principalement des forces externes (air...)
 
+%% Paramètres des forces/masses
+faire_echelon = true; % Vrai pour appliquer une force constante soudaine (échelon)
+Force_echelon = -0.4905; % En newtons. Mettre NÉGATIF pour simuler une masse déposée vers le bas.
+T_echelon = 0; % Temps exact où la masse est déposée, mesuré en SECONDES
 
-%% Paramêtre des forces/masses
-faire_impulsion = true; % ignorer les 4 paramètres dessous si false
-Force_impulsion = 0.1; % En newton, multiplie l'impulsion de dirac
-T_impulsion = 1; % temps au début de l'impulsion mesuré en nb de pas temporels, pas en secondes 
-Largeur_impulsion = 100;  % Durée de l'impulsion en pas temporels, théoriquement 0 (dirac) mais trop petit donne des résultats bizzards
-
-F_constante = 0; % Force appliqueée en tout temps à la position de l'actionneur (s'aditionne à l'impulsion), positif = vers le haut
-pos_actionneur_et_masse = 0.146; % en mètre, position où on applique la force constante et l'impusion
-
-masse = 0.04; %en kg, masse de la bobine de l'actionneur (40g) + masse mesurée
+F_constante = 0; % Force appliqueée en tout temps à la position de l'actionneur (s'aditionne à l'échelon), positif = vers le haut
+pos_actionneur_et_masse = 0.1345; % en mètre, position où on applique la force constante et l'échelon
+masse = 61/1000; %en kg, masse de la bobine de l'actionneur (40g) + masse mesurée
 masse_aimant = 1/1000; % masse en Kg de l'aimant au bout de la lame
-
-c = 0.35; % Pour l'amortissement, sans unité, externe à la poutre 
+c = 0.35443; % Pour l'amortissement, sans unité, externe à la poutre 
 g = 9.81;  % m/s^2
-%% Paramètres de La poutre
-b = 7.1e-2;        % Base 6 cm
-h = 1.5e-3;     % Hauteur 1.56 mm
-L = 24.3e-2;     % Longueur 24.6 cm 
 
+%% Paramètres de La poutre
+b = 7.08e-2;        % Base 6 cm
+h = 1.5875e-3;     % Hauteur 1.56 mm
+L = 24.3e-2;     % Longueur 24.6 cm 
 nx = 20;         % Nb d'éléments spatiaux (attention à la stabilité)
 
 %% Paramètres de simulation
@@ -37,39 +32,35 @@ calcul_pos_repos_avec_masses = false;
 affichage_rapide = true;% affiche la poutre chaque 500 pas temporels, accélère énormément la simulation
 pas_d_affichage = false;
 dt = 3e-5; % Pas de simulation en secondes (le rendre plus grand va rendre la simulation instable)
-temps_simulation = 5; % temps en secondes
-
+temps_simulation = 20; % temps en secondes
 
 %% sorties 
 plot_pos_bout= true;
 plot_pos_actionneur = true;
 faire_fft = true;
-
 produire_fct_transfert = false; % SEULEMENT UTILISER AVEC debut_pos_repos = true!!!
+
 % tf du bout
 npb = 6; %nombre de poles
 nzb = 2; %nombre de zéros
+
 % tf de l'actionneur
 npa = 4; %nombre de poles
 nza = 1; %nombre de zéros
-
 facteur_identification_s = 50; % La fréquence baisse de ce facteur pour l'identification, sa accelere le code
 
 %% Paramètres du Matériau
-E = 24e9;      % Module de Young  24 GPa (pour le Fr4 selon wikipedia)
+E = 18.6e9;      % Module de Young  24 GPa (pour le Fr4 selon wikipedia)
 dens = 1850;     % Densité Kg/m^3
 mu =  dens*b*h;  % Masse linéique kg/m
 J = b*h^3/12;    % Moment d'aire
-
-
-
-
 
 %% Code
 dx =   L/(nx-1);  % incrément spatial
 dx_n = dx/L;     % On travaille en dx normalisé
 idx_force = round(pos_actionneur_et_masse / dx) + 2;
 idx_bout = round(L / dx) + 2;
+
 % Création d'un vecteur de masse linéique effective
 mu_eff = mu * ones(1, nx);
 mu_eff_intrinseque = mu_eff;
@@ -89,40 +80,38 @@ coeff3 = -mu_simu_eff.^2;
 alpha = (c * dt) ./ (mu_eff * 2);
 Facteur_a1 = 1 ./ (alpha + 1);
 Facteur_a2 = (alpha - 1) ./ (alpha + 1);
-
 coeff1_a = coeff1 .* Facteur_a1; 
 coeff2_a = coeff2 .* Facteur_a1;
 coeff3_a = coeff3 .* Facteur_a1;
-
 effet_gravite = -g * dt^2 ; 
 effet_gravite_a = effet_gravite .* Facteur_a1;
-
 facteur_force_eff = (dt^2 ./ (mu_eff *dx)) .* Facteur_a1;
+
 nt = round(temps_simulation/dt);       % Nombre de pas temporels simulés
 
-
-% Impulsion
-F = F_constante * ones(1, nt+50);   % Tableau de F pour le varier avec le temps
-if faire_impulsion;
-F(T_impulsion:T_impulsion+Largeur_impulsion) = Force_impulsion*(1/(Largeur_impulsion*dt))+F_constante; 
+% CRÉATION DE L'ÉCHELON DE FORCE
+F = F_constante * ones(1, nt+50);   % Tableau de F de base
+idx_echelon = round(T_echelon / dt); % Convertit les secondes en indice de tableau
+if idx_echelon < 1
+    idx_echelon = 1;
 end
 
+if faire_echelon
+    % À partir du temps T_echelon jusqu'à la fin de la simulation, on applique la force
+    F(idx_echelon:end) = Force_echelon + F_constante; 
+end
 
 x  = -dx:dx:L+dx; % grille spatiale
 nx = nx+2;
 
-
-
 % Constantes physiques
 g = 9.81; % m/s^2
-
 
 % Stiffness params
 kappa = sqrt(E*J/(mu*L^4));
 
 % Doit être inférieur à 1/2 pour que ca soit stable
 mu_simu = kappa*dt/dx_n^2;
-
 if(mu_simu >1/2)
        warning('La simulation ne sera pas stable !')
 end
@@ -130,7 +119,6 @@ end
 f1 = sqrt( (1.875/L).^4*(E*J/mu))/(2*pi);  % Fréqeunce theorique de la fondamentale
 f1 = 1.875^2*kappa/(2*pi);
 %f1 = 4.73^2*kappa/(2*pi)  %% Clamped condition
-
 
 %% Conditions initiales
 if debut_pos_repos
@@ -178,31 +166,23 @@ if debut_pos_repos
 end
 
 %% Calcul de la solution statique
-
-
 w_old = w;                                  % un pas dans le passé
 w_new = zeros(1,nx);                        % ce qui sera calculé à chaque tour
 w_init =w;                                  % Préservation de la condition initiale
 
-
 %% Vecteur qui condiendra la position de l'extrémité de la lame en fonction
 % du temps
-
 pos_bout =zeros(1,nt+1);
 pos_actionneur = zeros(1,nt+1);
-%% Précalcul des params de simulation pour accélerer la boucle
 
- 
+%% Précalcul des params de simulation pour accélerer la boucle
 coeff1 = (2-6*mu_simu^2);
 coeff2 = (4*mu_simu^2);
 coeff3 = -mu_simu^2;
-
 facteur_force = dt^2 / (mu*dx); % Facteur à multiplier aux forces 
-
 
 %% Indice de l'élément de longueur auquel appliquer la force
 [a,idx_force] = min(abs(x-pos_actionneur_et_masse));
-% x(idx_force) %Pour vérif
 
 %% Nouveaux coefficients pour amoritssement
 alpha = (c*dt)/(mu*2);
@@ -210,14 +190,13 @@ alpha = (c*dt)/(mu*2);
 %% Préparation de la figure
 if pas_d_affichage == false
 h=plot(x,1000*w_init,x,1000*w_new, ...
-    x(idx_force), 0, 'g.', 'MarkerSize', 10, 'MarkerFaceColor', 'r')
+    x(idx_force), 0, 'g.', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
 xlabel('x [m]')
 ylabel('Déflexion [mm]')
 ylim([-10,3])
 grid on
 end
-t_force = 1;
-%% Boucle de simulation
+
 %% Préparation avant la boucle
 i_interne = 3:nx-2; % On le calcule une seule fois !
 w_new = w; % Initialiser w_new à la bonne taille
@@ -230,7 +209,7 @@ for n = 0:nt
                        w_old(i_interne).*Facteur_a2(i_interne) + effet_gravite_a(i_interne);
     
     % Force
-    idx_t = n + 1; % Remplace t_force
+    idx_t = n + 1; 
     w_new(idx_force) = w_new(idx_force) + (F(idx_t) * facteur_force_eff(idx_force));
     
     % Conditions limites 
@@ -243,9 +222,9 @@ for n = 0:nt
     w = w_new;
     
     pos_bout(idx_t) = w(end);
-    pos_actionneur(idx_t) = w(idx_force); % Maintenant très rapide grâce à la pré-allocation !
+    pos_actionneur(idx_t) = w(idx_force); 
     
-    % Affichage (inchangé)
+    % Affichage 
     if pas_d_affichage == false
         if affichage_rapide == true && mod(n,500) == 0
             set(h(2),'Ydata',1000*w_new);
@@ -256,62 +235,43 @@ for n = 0:nt
         end
     end
 end
-
    
-
 %% Figures de la position selon le temps
-if plot_pos_bout;
+if plot_pos_bout
 figure
 plot((0:dt:(nt*dt)),pos_bout)
 grid
 title('Position du bout de la lame selon le temps')
-
-% Centre l'oscillation sur zéro
+% Centre l'oscillation sur zéro pour la FFT
 pos_repos = mean(pos_bout);
-
-h = pos_bout(T_impulsion:end) - pos_repos; % Soustraire pour ramener à 0
-h = h(:); % Force h à être un vecteur colonne (N x 1)
+h_fft = pos_bout(idx_echelon:end) - pos_repos; % Utilise le bon index d'échelon
+h_fft = h_fft(:); 
 end
 
-if plot_pos_actionneur;
+if plot_pos_actionneur
 figure
 plot((0:dt:(nt*dt)),pos_actionneur)
 grid
 title("Position de l'actionneur et de la plaque de pesée selon le temps")
-
-% Centre l'oscillation sur zéro
-pos_repos = mean(pos_actionneur);
-
-h = pos_bout(T_impulsion:end) - pos_repos; % Soustraire pour ramener à 0
-h = h(:); % Force h à être un vecteur colonne (N x 1)
 end
 
-
 %% --- Analyse fréquentielle (FFT) pour extraire les modes ---
-if faire_fft;
-% 1. Paramètres du signal
-Fs = 1/dt;               % Fréquence d'échantillonnage (Hz)
-L_sig = length(h);       % Longueur du signal analysé
+if faire_fft
+Fs = 1/dt;               
+L_sig = length(h_fft);       
+Y = fft(h_fft);
 
-% 2. Calcul de la Transformée de Fourier Rapide
-Y = fft(h);
-
-% 3. Calcul du spectre d'amplitude bilatéral, puis unilatéral
 P2 = abs(Y/L_sig);
 P1 = P2(1:floor(L_sig/2)+1);
 P1(2:end-1) = 2*P1(2:end-1); 
 
-% 4. Vecteur de fréquences correspondant
 f = Fs*(0:floor(L_sig/2))/L_sig;
 
-% 5. Création de la figure (Échelle Linéaire)
 figure('Name', 'Analyse Spectrale (FFT)', 'Color', 'w');
 plot(f, P1, 'b-', 'LineWidth', 1.5, 'DisplayName', 'FFT du bout de la lame');
 grid on;
 hold on;
-% --- Limiter l'affichage à 200 Hz ---
 xlim([1, 200]); 
-
 title('Spectre du déplacement de l''extrémité (0 - 200 Hz)');
 xlabel('Fréquence (Hz)');
 ylabel('|P1(f)| (Amplitude)');
@@ -319,23 +279,19 @@ end
 
 %% Calcul de la fct de transfert
 if produire_fct_transfert 
-    % 1. On centre à 0
     disp('calcul fct_transfert')
-    pos_repos = w_init(idx_bout); % Utilise w_init calculé précédemment
-    h = pos_bout(1:nt) - pos_repos; % On prend tout depuis le début
-    h = h(:); % Vecteur colonne
+    pos_repos = w_init(idx_bout); 
+    h_tf = pos_bout(1:nt) - pos_repos; 
+    h_tf = h_tf(:); 
     
+    opt = tfestOptions('SearchMethod', 'lm'); 
     
-    opt = tfestOptions('SearchMethod', 'lm'); %parametres de tfest
-    % 2. On prend le vecteur de force réel utilisé dans la boucle
-    % On s'assure qu'il a la même longueur que h (nt éléments)
     u = F(1:nt); 
-    u = u(:); % Vecteur colonne
+    u = u(:); 
     u_d = decimate(u,facteur_identification_s);
-    % 3. Création de l'objet data
-    data = iddata(decimate(h,facteur_identification_s), u_d, facteur_identification_s*dt); 
     
-    % 4. Identification
+    data = iddata(decimate(h_tf,facteur_identification_s), u_d, facteur_identification_s*dt); 
+    
     sys_identifie = tfest(data, npb, nzb, opt);
     tf_bout_poutre = tf(sys_identifie);
         
@@ -343,23 +299,19 @@ if produire_fct_transfert
     [num_bout, den_bout] = tfdata(tf_bout_poutre, 'v');
     disp(num_bout);
     disp(den_bout);
-    % Vérification visuelle
+    
     figure('Name', 'Comparaison Données bout vs Modèle tfest');
     compare(data, sys_identifie); 
     grid on;
     title(['Comparaison Temporelle bout - Ordre ', num2str(npb)]);
-        %-------------------------------------------------------------------------
-        % 1. On centre à 0
-    pos_repos = w_init(idx_force); % Utilise w_init calculé précédemment
-    h = pos_actionneur(1:nt) - pos_repos; % On prend tout depuis le début
-    h = h(:); % Vecteur colonne
     
-   
+    %-------------------------------------------------------------------------
+    pos_repos = w_init(idx_force); 
+    h_tf2 = pos_actionneur(1:nt) - pos_repos; 
+    h_tf2 = h_tf2(:); 
     
-    % 3. Création de l'objet data
-    data = iddata(decimate(h,facteur_identification_s), u_d, facteur_identification_s*dt);
+    data = iddata(decimate(h_tf2,facteur_identification_s), u_d, facteur_identification_s*dt);
     
-    % 4. Identification
     sys_identifie = tfest(data, npa, nza,opt);
     tf_actionneur = tf(sys_identifie);
         
@@ -367,13 +319,10 @@ if produire_fct_transfert
     [num_actionneur, den_actionneur] = tfdata(tf_actionneur, 'v');
     disp(num_actionneur);
     disp(den_actionneur);
-
     
-    % Vérification visuelle
     figure('Name', 'Comparaison Données actionneur vs Modèle tfest');
     compare(data, sys_identifie); 
     grid on;
     title(['Comparaison Temporelle actionneur - Ordre ', num2str(npa)]);
-
 end
 disp(toc)

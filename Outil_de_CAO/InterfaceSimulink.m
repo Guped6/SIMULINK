@@ -32,6 +32,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         DegrePolyLabel              matlab.ui.control.Label
         DegrePolySpinner            matlab.ui.control.Spinner
         EquationLabel               matlab.ui.control.Label
+        StableLamp                  matlab.ui.control.Lamp 
+        StableLampLabel             matlab.ui.control.Label
         
         % --- Paramètres ---
         SectionParamLabel           matlab.ui.control.Label
@@ -103,11 +105,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         MassesCibles = [0, 1, 3, 5, 10, 20, 40, 50, 60, 80, 100];
         IndexCalibration = 1;
         EnCalibration = false;
+        NomModele = 'Simulation_balance_poids_variable_realtime2024';
     end
     
     methods (Access = private)
         
-        % Envoi des parametres vers Simulink
+        % Envoi des parametres vers le Workspace MATLAB
         function GainValueChanged(app, ~)
             try
                 assignin('base', 'kp_pos', app.KpPosEditField.Value);
@@ -124,7 +127,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 assignin('base', 'num_pos', str2num(app.NumPosEditField.Value)); %#ok<ST2NM>
                 assignin('base', 'denom_pos', str2num(app.DenPosEditField.Value)); %#ok<ST2NM>
                 
-                % --- CORRECTION ICI : 'gain_cou' au lieu de 'gain_cou_' ---
                 assignin('base', 'gain_cou', app.GainCouEditField.Value);
                 assignin('base', 'offset_cou', app.OffsetCouEditField.Value);
                 assignin('base', 'num_cou', str2num(app.NumCouEditField.Value)); %#ok<ST2NM>
@@ -135,64 +137,72 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 assignin('base', 'num_com', str2num(app.NumPWMEditField.Value)); %#ok<ST2NM>
                 assignin('base', 'denom_com', str2num(app.DenPWMEditField.Value)); %#ok<ST2NM>
                 
-                status = get_param('Simulation_balance_poids_variable_realtime2024','SimulationStatus');
-                if strcmp(status, 'running')
-                    set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'update');
-                end
             catch ME
                 disp(['Erreur param : ', ME.message]);
             end
         end
         
-        % Mise a jour des graphiques
+        % Mise a jour des graphiques ET de la LED
         function updatePlot(app)
-            status = get_param('Simulation_balance_poids_variable_realtime2024','SimulationStatus');
+            status = get_param(app.NomModele,'SimulationStatus');
             
             if strcmp(status, 'running')
                 try
-                    t_simulink = get_param('Simulation_balance_poids_variable_realtime2024', 'SimulationTime');
+                    t_simulink = get_param(app.NomModele, 'SimulationTime');
                     t_continu = app.TimeOffset + t_simulink;
                     
-                    if t_simulink >= 0.15
-                        % Masse
-                        rto_masse = get_param('Simulation_balance_poids_variable_realtime2024/ScopeSortie','RuntimeObject');
-                        if ~isempty(rto_masse)
-                            val_masse = double(rto_masse.InputPort(1).Data) - app.TareValue;
-                            app.LiveLine.XData = [app.LiveLine.XData, t_continu];
-                            app.LiveLine.YData = [app.LiveLine.YData, val_masse];
-                            app.MassemesuregEditField.Value = val_masse;
-                            
-                            if t_continu > app.UIAxes.XLim(2)
-                                app.UIAxes.XLim = [0, t_continu + 2];
-                            end
-                        end
+                    % 1. Masse
+                    rto_masse = get_param([app.NomModele, '/ScopeSortie'],'RuntimeObject');
+                    if ~isempty(rto_masse)
+                        val_masse = double(rto_masse.InputPort(1).Data) - app.TareValue;
+                        app.LiveLine.XData = [app.LiveLine.XData, t_continu];
+                        app.LiveLine.YData = [app.LiveLine.YData, val_masse];
+                        app.MassemesuregEditField.Value = val_masse;
                         
-                        % Position
-                        try
-                            rto_pos = get_param('Simulation_balance_poids_variable_realtime2024/ScopePosition','RuntimeObject');
-                            if ~isempty(rto_pos)
-                                val_pos = double(rto_pos.InputPort(1).Data);
-                                app.LiveLinePosition.XData = [app.LiveLinePosition.XData, t_continu];
-                                app.LiveLinePosition.YData = [app.LiveLinePosition.YData, val_pos];
-                                
-                                if t_continu > app.UIAxesPosition.XLim(2)
-                                    app.UIAxesPosition.XLim = [0, t_continu + 2];
-                                end
-                            end
-                        catch
+                        if t_continu > app.UIAxes.XLim(2)
+                            app.UIAxes.XLim = [0, t_continu + 2];
                         end
-                        
-                        % Tension pour calibration
-                        try
-                            rto_tension = get_param('Simulation_balance_poids_variable_realtime2024/ScopeTension','RuntimeObject');
-                            if ~isempty(rto_tension)
-                                app.DerniereTensionLue = double(rto_tension.InputPort(1).Data);
-                            end
-                        catch
-                        end
-                        
-                        drawnow limitrate; 
                     end
+                    
+                    % 2. Position
+                    try
+                        rto_pos = get_param([app.NomModele, '/ScopePosition'],'RuntimeObject');
+                        if ~isempty(rto_pos)
+                            val_pos = double(rto_pos.InputPort(1).Data);
+                            app.LiveLinePosition.XData = [app.LiveLinePosition.XData, t_continu];
+                            app.LiveLinePosition.YData = [app.LiveLinePosition.YData, val_pos];
+                            
+                            if t_continu > app.UIAxesPosition.XLim(2)
+                                app.UIAxesPosition.XLim = [0, t_continu + 2];
+                            end
+                        end
+                    catch
+                    end
+                    
+                    % 3. Tension pour calibration
+                    try
+                        rto_tension = get_param([app.NomModele, '/ScopeTension'],'RuntimeObject');
+                        if ~isempty(rto_tension)
+                            app.DerniereTensionLue = double(rto_tension.InputPort(1).Data);
+                        end
+                    catch
+                    end
+                    
+                    % 4. MISE À JOUR DE LA LED DE STABILITÉ
+                    try
+                        rto_stable = get_param([app.NomModele, '/MATLAB Function2'],'RuntimeObject');
+                        if ~isempty(rto_stable)
+                            val_stable = double(rto_stable.OutputPort(2).Data);
+                            if val_stable >= 1
+                                app.StableLamp.Color = [0 1 0]; % Vert (Stable)
+                            else
+                                app.StableLamp.Color = [1 0 0]; % Rouge (Instable)
+                            end
+                        end
+                    catch
+                    end
+                    
+                    drawnow limitrate; 
                 catch
                 end
             elseif strcmp(status, 'stopped')
@@ -210,52 +220,50 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         end
         
         function ArrtersimulationButtonPushed(app, ~)
-            set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'stop');
+            set_param(app.NomModele, 'SimulationCommand', 'stop');
+            app.StableLamp.Color = [0.5 0.5 0.5]; % Gris quand arrêté
             if ~isempty(app.PlotTimer) && isvalid(app.PlotTimer)
                 stop(app.PlotTimer);
             end
         end
         
-        function EntreMassegEditFieldValueChanged(app, ~)
-            nouvelle_masse = app.EntreMassegEditField.Value;
-            set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'value', num2str(nouvelle_masse));
-        end
-        
+        % --- LE COEUR DU PROBLÈME RÉGLÉ ICI ---
         function RafrachirButtonPushed(app, ~)
             try
-                t_actuel = get_param('Simulation_balance_poids_variable_realtime2024', 'SimulationTime');
-                app.TimeOffset = app.TimeOffset + t_actuel;
+                status = get_param(app.NomModele,'SimulationStatus');
+                if strcmp(status, 'stopped')
+                    uialert(app.UIFigure, 'La simulation est arrêtée. Mettez le temps de fin à "inf" dans Simulink et redémarrez.', 'Erreur');
+                    return;
+                end
                 
-                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'stop');
+                % 1. On fige le temps de Simulink une fraction de seconde
+                set_param(app.NomModele, 'SimulationCommand', 'pause');
                 
-                % --- CORRECTION ICI : Pause pour laisser Simulink s'arrêter ---
-                pause(0.2);
-                
+                % 2. On injecte la masse et les gains
                 nouvelle_masse = app.EntreMassegEditField.Value;
-                set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(nouvelle_masse));
-                
-                evalin('base', 'Initialisation_simulation'); 
+                set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(nouvelle_masse));
                 GainValueChanged(app, []);
                 
-                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'start');
+                % 3. On force le solveur à enregistrer la modification
+                set_param(app.NomModele, 'SimulationCommand', 'update');
                 
-                if ~isempty(app.PlotTimer) && isvalid(app.PlotTimer)
-                    if strcmp(app.PlotTimer.Running, 'off')
-                        start(app.PlotTimer);
-                    end
-                end
+                % 4. On relâche la pause instantanément !
+                set_param(app.NomModele, 'SimulationCommand', 'continue');
+                
             catch ME
-                disp(['Erreur rafraîchissement : ', ME.message]);
+                uialert(app.UIFigure, ['Erreur lors du rafraîchissement : ', ME.message], 'Erreur');
             end
         end
         
         function DmarrersimulationButtonPushed(app, ~)
             try
-                valeur_masse = num2str(app.EntreMassegEditField.Value);
-                set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', valeur_masse);
                 evalin('base', 'Initialisation_simulation'); 
+                
+                valeur_masse = num2str(app.EntreMassegEditField.Value);
+                set_param([app.NomModele, '/Masse (g)'], 'Value', valeur_masse);
                 GainValueChanged(app, []);
-            catch
+            catch ME
+                uialert(app.UIFigure, ['Erreur au démarrage : ', ME.message], 'Erreur');
             end
             
             app.TimeOffset = 0;
@@ -266,7 +274,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.LiveLinePosition.YData = [];
             app.UIAxesPosition.XLim = [0 5]; 
             
-            set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'start');
+            set_param(app.NomModele, 'SimulationCommand', 'start');
             
             if isempty(app.PlotTimer) || ~isvalid(app.PlotTimer)
                 app.PlotTimer = timer('ExecutionMode', 'fixedRate', ...
@@ -290,14 +298,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         end
         
         % =========================================================
-        % SEQUENCE DE CALIBRATION
+        % SEQUENCE DE CALIBRATION INTELLIGENTE
         % =========================================================
         
-        % Demarrage de la sequence
         function DemarrerCalibPushed(app, ~)
-            % Petite sécurité : on s'assure que la simulation tourne !
-            status = get_param('Simulation_balance_poids_variable_realtime2024','SimulationStatus');
-            if ~strcmp(status, 'running')
+            status = get_param(app.NomModele,'SimulationStatus');
+            if ~strcmp(status, 'running') && ~strcmp(status, 'paused')
                 uialert(app.UIFigure, 'Veuillez démarrer la simulation dans l''onglet Accueil avant de calibrer.', 'Simulation à l''arrêt');
                 return;
             end
@@ -306,58 +312,58 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.IndexCalibration = 1;
             app.EnCalibration = true;
             
-            % Reset affichage
             app.CalibrationTable.Data = table([], [], 'VariableNames', {'Masse (g)', 'Tension brute lue'});
             app.EquationLabel.Text = 'Équation : (En attente)';
             
-            % Demande la premiere masse ET force Simulink à l'utiliser
             masse_req = app.MassesCibles(app.IndexCalibration);
-            set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(masse_req));
-            app.EntreMassegEditField.Value = masse_req; % Synchronise l'onglet accueil
+            app.EntreMassegEditField.Value = masse_req; 
             
-            app.InstructionCalibLabel.Text = sprintf('Masse de %d g injectée. Attendez la stabilisation puis Enregistrez.', masse_req);
-            app.InstructionCalibLabel.FontColor = [0 0 0]; % Noir
+            % Séquence Pause -> Modifie -> Update -> Continue
+            set_param(app.NomModele, 'SimulationCommand', 'pause');
+            set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(masse_req));
+            set_param(app.NomModele, 'SimulationCommand', 'update');
+            set_param(app.NomModele, 'SimulationCommand', 'continue');
+            
+            app.InstructionCalibLabel.Text = sprintf('-> La masse de %d g est appliquée ! Enregistrez dès que la LED est VERTE.', masse_req);
+            app.InstructionCalibLabel.FontColor = [0 0 0]; 
         end
         
-        % Enregistrement d'un point
         function AcquerirPointPushed(app, ~)
             if ~app.EnCalibration
                 uialert(app.UIFigure, 'Veuillez cliquer sur "Démarrer Calibration" en premier.', 'Action requise');
                 return;
             end
             
-            % Sauvegarde le point
             masse_actuelle = app.MassesCibles(app.IndexCalibration);
             app.CalibDataMasses = [app.CalibDataMasses; masse_actuelle];
             app.CalibDataTensions = [app.CalibDataTensions; app.DerniereTensionLue];
             
-            % Met a jour la table
             app.CalibrationTable.Data = table(app.CalibDataMasses, app.CalibDataTensions, ...
                 'VariableNames', {'Masse (g)', 'Tension brute lue'});
             
-            % Avance dans la liste
             app.IndexCalibration = app.IndexCalibration + 1;
             
-            % Verifie si c'est fini
             if app.IndexCalibration > length(app.MassesCibles)
                 app.EnCalibration = false;
                 app.InstructionCalibLabel.Text = 'Calibration terminée ! Calcul en cours...';
-                app.InstructionCalibLabel.FontColor = [0 0.5 0]; % Vert
+                app.InstructionCalibLabel.FontColor = [0 0.5 0]; 
                 
-                % Lance le calcul automatiquement
                 CalculerCalibPushed(app, []);
             else
-                % --- CORRECTION ICI : 'masse_suivante' utilisée partout ---
-                % Demande la masse suivante ET l'envoie à Simulink
+                % L'interface change la masse TOUTE SEULE sans geler Simulink !
                 masse_suivante = app.MassesCibles(app.IndexCalibration);
-                set_param('Simulation_balance_poids_variable_realtime2024/Masse (g)', 'Value', num2str(masse_suivante));
                 app.EntreMassegEditField.Value = masse_suivante;
                 
-                app.InstructionCalibLabel.Text = sprintf('Masse de %d g injectée. Attendez la stabilisation puis Enregistrez.', masse_suivante);
+                % Séquence Pause -> Modifie -> Update -> Continue
+                set_param(app.NomModele, 'SimulationCommand', 'pause');
+                set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(masse_suivante));
+                set_param(app.NomModele, 'SimulationCommand', 'update');
+                set_param(app.NomModele, 'SimulationCommand', 'continue');
+                
+                app.InstructionCalibLabel.Text = sprintf('-> Succès ! La masse de %d g est appliquée. Attendez que la LED redevienne VERTE.', masse_suivante);
             end
         end
         
-        % Calcul mathematique
         function CalculerCalibPushed(app, ~)
             if length(app.CalibDataMasses) < 2
                 uialert(app.UIFigure, 'Pas assez de données pour calibrer.', 'Erreur');
@@ -370,10 +376,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 return;
             end
             
-            % Polyfit
             calib_coeffs = polyfit(app.CalibDataTensions, app.CalibDataMasses, degre);
             
-            % Affichage de l'equation
             eq_str = 'y = ';
             for i = 1:length(calib_coeffs)
                 puissance = length(calib_coeffs) - i;
@@ -385,15 +389,16 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
             app.EquationLabel.Text = eq_str;
             
-            % Envoi vers Simulink
             assignin('base', 'calib_coeffs', calib_coeffs);
             
-            status = get_param('Simulation_balance_poids_variable_realtime2024','SimulationStatus');
-            if strcmp(status, 'running')
-                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'update');
+            status = get_param(app.NomModele,'SimulationStatus');
+            if strcmp(status, 'running') || strcmp(status, 'paused')
+                set_param(app.NomModele, 'SimulationCommand', 'pause');
+                set_param(app.NomModele, 'SimulationCommand', 'update');
+                set_param(app.NomModele, 'SimulationCommand', 'continue');
             end
             
-            uialert(app.UIFigure, 'La calibration est terminée et a été envoyée à Simulink.', 'Succès');
+            uialert(app.UIFigure, 'La calibration est terminée ! Les nouveaux coefficients sont dans le Workspace.', 'Succès');
         end
     end
     
@@ -450,7 +455,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.EntreMasseKgLabel.Text = 'Entrée Masse Simulée (g) :';
             
             app.EntreMassegEditField = uieditfield(app.TabAccueil, 'numeric');
-            app.EntreMassegEditField.ValueChangedFcn = createCallbackFcn(app, @EntreMassegEditFieldValueChanged, true);
             app.EntreMassegEditField.Position = [X_mid 450 200 35];
             
             app.MassemesuregEditFieldLabel = uilabel(app.TabAccueil);
@@ -486,32 +490,42 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.DemarrerCalibButton.ButtonPushedFcn = createCallbackFcn(app, @DemarrerCalibPushed, true);
             
             app.InstructionCalibLabel = uilabel(app.TabCalibration);
-            app.InstructionCalibLabel.Position = [280 750 600 40];
-            app.InstructionCalibLabel.FontSize = 18;
+            app.InstructionCalibLabel.Position = [280 750 800 40];
+            app.InstructionCalibLabel.FontSize = 14;
             app.InstructionCalibLabel.FontWeight = 'bold';
             app.InstructionCalibLabel.Text = 'Cliquez sur Démarrer pour lancer la séquence.';
+            
+            % LED DE STABILITÉ
+            app.StableLampLabel = uilabel(app.TabCalibration);
+            app.StableLampLabel.Position = [500 700 200 22];
+            app.StableLampLabel.FontWeight = 'bold';
+            app.StableLampLabel.Text = 'État de la mesure :';
+            
+            app.StableLamp = uilamp(app.TabCalibration);
+            app.StableLamp.Position = [620 700 20 20];
+            app.StableLamp.Color = [0.5 0.5 0.5]; % Gris par défaut
             
             app.CalibrationTable = uitable(app.TabCalibration);
             app.CalibrationTable.Position = [50 300 400 400];
             app.CalibrationTable.ColumnName = {'Masse (g)', 'Tension brute lue'};
             
             app.AcquerirPointButton = uibutton(app.TabCalibration, 'push');
-            app.AcquerirPointButton.Position = [500 650 250 50];
+            app.AcquerirPointButton.Position = [500 600 250 50];
             app.AcquerirPointButton.Text = '2. Enregistrer la mesure';
             app.AcquerirPointButton.BackgroundColor = [0.6 0.8 1.0];
             app.AcquerirPointButton.ButtonPushedFcn = createCallbackFcn(app, @AcquerirPointPushed, true);
             
             app.DegrePolyLabel = uilabel(app.TabCalibration);
-            app.DegrePolyLabel.Position = [500 580 200 22];
+            app.DegrePolyLabel.Position = [500 550 200 22];
             app.DegrePolyLabel.Text = 'Degré du polynôme (ex: 1 = Droite) :';
             
             app.DegrePolySpinner = uispinner(app.TabCalibration);
-            app.DegrePolySpinner.Position = [500 550 100 30];
+            app.DegrePolySpinner.Position = [500 520 100 30];
             app.DegrePolySpinner.Value = 1;
             app.DegrePolySpinner.Limits = [1 5];
             
             app.CalculerCalibButton = uibutton(app.TabCalibration, 'push');
-            app.CalculerCalibButton.Position = [500 480 250 50];
+            app.CalculerCalibButton.Position = [500 450 250 50];
             app.CalculerCalibButton.Text = 'Recalculer manuellement';
             app.CalculerCalibButton.ButtonPushedFcn = createCallbackFcn(app, @CalculerCalibPushed, true);
             
