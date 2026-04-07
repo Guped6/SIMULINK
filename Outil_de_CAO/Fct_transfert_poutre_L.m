@@ -10,25 +10,27 @@ tic
 
 %% Paramètres des forces/masses
 faire_echelon = true; % Vrai pour appliquer une force constante soudaine (échelon)
-Force_echelon = -0.4905; % En newtons. Mettre NÉGATIF pour simuler une masse déposée vers le bas.
+masse_echelon_g = 50; % En grammes. Masse de l'échelon ajoutée vers le bas.
 T_echelon = 0; % Temps exact où la masse est déposée, mesuré en SECONDES
-
 F_constante = 0; % Force appliqueée en tout temps à la position de l'actionneur (s'aditionne à l'échelon), positif = vers le haut
 pos_actionneur_et_masse = 0.1345; % en mètre, position où on applique la force constante et l'échelon
-masse = 61/1000; %en kg, masse de la bobine de l'actionneur (40g) + masse mesurée
+masse = 61/1000; %en kg, masse de la bobine de l'actionneur
 masse_aimant = 1/1000; % masse en Kg de l'aimant au bout de la lame
 c = 0.35443; % Pour l'amortissement, sans unité, externe à la poutre 
 g = 9.81;  % m/s^2
 
+% Calcul automatique de la force de l'échelon (négatif car vers le bas)
+Force_echelon = -(masse_echelon_g / 1000) * g; 
+
 %% Paramètres de La poutre
-b = 7.08e-2;        % Base 6 cm
-h = 1.5875e-3;     % Hauteur 1.56 mm
-L = 24.3e-2;     % Longueur 24.6 cm 
-nx = 20;         % Nb d'éléments spatiaux (attention à la stabilité)
+b = 7.08e-2;        % Base
+h = 1.5875e-3;      % Hauteur
+L = 24.3e-2;        % Longueur
+nx = 20;            % Nb d'éléments spatiaux (attention à la stabilité)
 
 %% Paramètres de simulation
 debut_pos_repos = true;
-calcul_pos_repos_avec_masses = false;
+calcul_pos_repos_avec_masses = false; % La lame est initialement au repos AVEC ses masses
 affichage_rapide = true;% affiche la poutre chaque 500 pas temporels, accélère énormément la simulation
 pas_d_affichage = false;
 dt = 3e-5; % Pas de simulation en secondes (le rendre plus grand va rendre la simulation instable)
@@ -57,7 +59,7 @@ J = b*h^3/12;    % Moment d'aire
 
 %% Code
 dx =   L/(nx-1);  % incrément spatial
-dx_n = dx/L;     % On travaille en dx normalisé
+dx_n = dx/L;      % On travaille en dx normalisé
 idx_force = round(pos_actionneur_et_masse / dx) + 2;
 idx_bout = round(L / dx) + 2;
 
@@ -80,9 +82,11 @@ coeff3 = -mu_simu_eff.^2;
 alpha = (c * dt) ./ (mu_eff * 2);
 Facteur_a1 = 1 ./ (alpha + 1);
 Facteur_a2 = (alpha - 1) ./ (alpha + 1);
+
 coeff1_a = coeff1 .* Facteur_a1; 
 coeff2_a = coeff2 .* Facteur_a1;
 coeff3_a = coeff3 .* Facteur_a1;
+
 effet_gravite = -g * dt^2 ; 
 effet_gravite_a = effet_gravite .* Facteur_a1;
 facteur_force_eff = (dt^2 ./ (mu_eff *dx)) .* Facteur_a1;
@@ -95,7 +99,6 @@ idx_echelon = round(T_echelon / dt); % Convertit les secondes en indice de table
 if idx_echelon < 1
     idx_echelon = 1;
 end
-
 if faire_echelon
     % À partir du temps T_echelon jusqu'à la fin de la simulation, on applique la force
     F(idx_echelon:end) = Force_echelon + F_constante; 
@@ -103,9 +106,6 @@ end
 
 x  = -dx:dx:L+dx; % grille spatiale
 nx = nx+2;
-
-% Constantes physiques
-g = 9.81; % m/s^2
 
 % Stiffness params
 kappa = sqrt(E*J/(mu*L^4));
@@ -116,9 +116,7 @@ if(mu_simu >1/2)
        warning('La simulation ne sera pas stable !')
 end
 
-f1 = sqrt( (1.875/L).^4*(E*J/mu))/(2*pi);  % Fréqeunce theorique de la fondamentale
 f1 = 1.875^2*kappa/(2*pi);
-%f1 = 4.73^2*kappa/(2*pi)  %% Clamped condition
 
 %% Conditions initiales
 if debut_pos_repos
@@ -127,7 +125,6 @@ if debut_pos_repos
     B = zeros(nx, 1);
     
     % 2. Remplissage pour les nœuds internes (i = 3 à nx-2)
-    % équation dynamique devient en régime permanent : w_new = w_old = w
     for i = 3:nx-2
         K(i, i-2) = -coeff3_a(i);
         K(i, i-1) = -coeff2_a(i);
@@ -137,54 +134,53 @@ if debut_pos_repos
         
         % Gravité
         if calcul_pos_repos_avec_masses
-            % Prend en compte mu_eff avec l'aimant et l'actionneur
             B(i) = effet_gravite_a(i);
         else
-            % Position de repos de la poutre seule (sans les masses ajoutées).
-            % Comme la matrice K contient déjà mu_eff, on ajuste la force 
-            % avec le ratio des masses pour que le bilan statique reste exact.
             ratio_masse = mu_eff_intrinseque(i) / mu_eff(i);
             B(i) = effet_gravite_a(i) * ratio_masse;
         end
     end
     
-    % 3. Ajout de la force constante éventuelle à la position de l'actionneur
+    % 3. Ajout de la force constante
     B(idx_force) = B(idx_force) + (F_constante * facteur_force_eff(idx_force));
     
     % 4. Conditions aux limites
-    % Encastrement gauche
     K(1, 1) = 1; B(1) = 0;
     K(2, 2) = 1; B(2) = 0;
-    
-    % Bout libre droite
     K(nx-1, nx-3) = 1; K(nx-1, nx-2) = -2; K(nx-1, nx-1) = 1; B(nx-1) = 0;
     K(nx, nx-2)   = 1; K(nx, nx-1)   = -2; K(nx, nx)   = 1; B(nx)   = 0;
     
-    % 5. Résolution du système linéaire statique [K]{W} = {B}
-    w = (K \ B)'; % On transpose pour redevenir un vecteur ligne 1xnx
+    % 5. Résolution du système statique
+    w = (K \ B)'; 
     w_repos = w;
+    
+    % DÉFINITION DE LA POSITION DU CAPTEUR
+    % Le capteur est placé 7.5 mm (0.0075 m) sous la lame à son état de repos
+    z_capteur = w_repos(idx_force) - 0.0075;
+else
+    % Fallback si pas de position de repos calculée
+    z_capteur = -0.0075; 
 end
 
 %% Calcul de la solution statique
 w_old = w;                                  % un pas dans le passé
 w_new = zeros(1,nx);                        % ce qui sera calculé à chaque tour
-w_init =w;                                  % Préservation de la condition initiale
+w_init = w;                                 % Préservation de la condition initiale
 
-%% Vecteur qui condiendra la position de l'extrémité de la lame en fonction
-% du temps
-pos_bout =zeros(1,nt+1);
+%% Vecteurs de position
+pos_bout = zeros(1,nt+1);
 pos_actionneur = zeros(1,nt+1);
 
 %% Précalcul des params de simulation pour accélerer la boucle
 coeff1 = (2-6*mu_simu^2);
 coeff2 = (4*mu_simu^2);
 coeff3 = -mu_simu^2;
-facteur_force = dt^2 / (mu*dx); % Facteur à multiplier aux forces 
+facteur_force = dt^2 / (mu*dx); 
 
 %% Indice de l'élément de longueur auquel appliquer la force
 [a,idx_force] = min(abs(x-pos_actionneur_et_masse));
 
-%% Nouveaux coefficients pour amoritssement
+%% Nouveaux coefficients pour amortissement
 alpha = (c*dt)/(mu*2);
 
 %% Préparation de la figure
@@ -198,8 +194,8 @@ grid on
 end
 
 %% Préparation avant la boucle
-i_interne = 3:nx-2; % On le calcule une seule fois !
-w_new = w; % Initialiser w_new à la bonne taille
+i_interne = 3:nx-2; 
+w_new = w; 
 
 %% Boucle de simulation
 for n = 0:nt 
@@ -235,13 +231,18 @@ for n = 0:nt
         end
     end
 end
-   
+
+% Conversion de la position absolue de l'actionneur en distance mesurée par le capteur
+distance_capteur = pos_actionneur - z_capteur;
+
 %% Figures de la position selon le temps
 if plot_pos_bout
 figure
-plot((0:dt:(nt*dt)),pos_bout)
+plot((0:dt:(nt*dt)),pos_bout * 1000) % Conversion en mm
 grid
 title('Position du bout de la lame selon le temps')
+ylabel('Position (mm)')
+xlabel('Temps (s)')
 % Centre l'oscillation sur zéro pour la FFT
 pos_repos = mean(pos_bout);
 h_fft = pos_bout(idx_echelon:end) - pos_repos; % Utilise le bon index d'échelon
@@ -250,9 +251,12 @@ end
 
 if plot_pos_actionneur
 figure
-plot((0:dt:(nt*dt)),pos_actionneur)
+% On trace maintenant la distance lue par le capteur (en mm)
+plot((0:dt:(nt*dt)), distance_capteur * 1000) 
 grid
-title("Position de l'actionneur et de la plaque de pesée selon le temps")
+title("Distance mesurée par le capteur de position (7.5 mm au repos)")
+ylabel('Distance au capteur (mm)')
+xlabel('Temps (s)')
 end
 
 %% --- Analyse fréquentielle (FFT) pour extraire les modes ---
@@ -260,21 +264,22 @@ if faire_fft
 Fs = 1/dt;               
 L_sig = length(h_fft);       
 Y = fft(h_fft);
-
 P2 = abs(Y/L_sig);
 P1 = P2(1:floor(L_sig/2)+1);
 P1(2:end-1) = 2*P1(2:end-1); 
-
 f = Fs*(0:floor(L_sig/2))/L_sig;
 
+% --- MODIFICATION EN DÉCIBELS (dB) ---
+P1_dB = 20 * log10(P1 + eps); % Conversion de l'amplitude en dB avec protection
+
 figure('Name', 'Analyse Spectrale (FFT)', 'Color', 'w');
-plot(f, P1, 'b-', 'LineWidth', 1.5, 'DisplayName', 'FFT du bout de la lame');
+plot(f, P1_dB, 'b-', 'LineWidth', 1.5, 'DisplayName', 'FFT du bout de la lame');
 grid on;
 hold on;
-xlim([1, 200]); 
-title('Spectre du déplacement de l''extrémité (0 - 200 Hz)');
+xlim([1, 100]); 
+title('Spectre du déplacement de l''extrémité (0 - 100 Hz)');
 xlabel('Fréquence (Hz)');
-ylabel('|P1(f)| (Amplitude)');
+ylabel('Amplitude (dB)'); % Label modifié pour refléter l'unité
 end
 
 %% Calcul de la fct de transfert

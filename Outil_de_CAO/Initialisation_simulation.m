@@ -243,3 +243,9 @@ nouveaux_coeffs = polyfit(valeurs_u_entree, vraies_masses_g, 3);
 % 4. Affichage du résultat
 disp('Voici tes nouveaux coefficients de calibration :');
 disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 décimales pour un maximum de précision
+
+% Commande système pour lancer FEMM silencieusement (-windowhide) et exécuter le script
+chemin_femm = 'C:\Users\tomur\Desktop\SIMULINK\FEMM'; % À adapter selon ton installation
+chemin_script = 'ton_script.lua';
+commande = sprintf('"%s" -windowhide -lua "%s"', chemin_femm, chemin_script);
+system(commande); % MATLAB mettra l'interface en pause le temps que FEMM finisse

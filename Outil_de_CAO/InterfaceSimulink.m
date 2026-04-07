@@ -8,6 +8,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         TabAccueil                  matlab.ui.container.Tab
         TabCalibration              matlab.ui.container.Tab
         TabParametres               matlab.ui.container.Tab
+        TabLame                     matlab.ui.container.Tab % NOUVEL ONGLET
         
         % --- Accueil ---
         RafrachirButton             matlab.ui.control.Button
@@ -87,6 +88,31 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         NumPWMEditField             matlab.ui.control.EditField
         DenPWMLabel                 matlab.ui.control.Label
         DenPWMEditField             matlab.ui.control.EditField
+        
+        % --- Paramètres Lame ---
+        PanelLameInputs             matlab.ui.container.Panel
+        
+        LameLengthLabel             matlab.ui.control.Label
+        LameLengthEditField         matlab.ui.control.NumericEditField
+        LameWidthLabel              matlab.ui.control.Label
+        LameWidthEditField          matlab.ui.control.NumericEditField
+        LameThicknessLabel          matlab.ui.control.Label
+        LameThicknessEditField      matlab.ui.control.NumericEditField
+        
+        LameMaterialLabel           matlab.ui.control.Label
+        LameMaterialDropDown        matlab.ui.control.DropDown
+        LameYoungLabel              matlab.ui.control.Label
+        LameYoungEditField          matlab.ui.control.NumericEditField
+        
+        LameMasseEchelonLabel       matlab.ui.control.Label
+        LameMasseEchelonEditField   matlab.ui.control.NumericEditField
+        
+        LancerAnalyseLameButton     matlab.ui.control.Button
+        StatusLameLabel             matlab.ui.control.Label
+        
+        UIAxesLameSim               matlab.ui.control.UIAxes
+        UIAxesCapteurDist           matlab.ui.control.UIAxes
+        UIAxesFFT                   matlab.ui.control.UIAxes
     end
     
     properties (Access = private)
@@ -227,7 +253,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
         end
         
-        % --- LE COEUR DU PROBLÈME RÉGLÉ ICI ---
         function RafrachirButtonPushed(app, ~)
             try
                 status = get_param(app.NomModele,'SimulationStatus');
@@ -400,6 +425,194 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             uialert(app.UIFigure, 'La calibration est terminée ! Les nouveaux coefficients sont dans le Workspace.', 'Succès');
         end
+        
+        % =========================================================
+        % ONGLET 4 : ANALYSE DE LA LAME
+        % =========================================================
+        
+        function MateriauDropdownValueChanged(app, ~)
+            val = app.LameMaterialDropDown.Value;
+            switch val
+                case 'Fibre de verre (FR4)'
+                    app.LameYoungEditField.Value = 18.6e9;
+                case 'Aluminium'
+                    app.LameYoungEditField.Value = 69e9;
+                case 'Acier'
+                    app.LameYoungEditField.Value = 200e9;
+                case 'Personnalisé'
+                    % L'utilisateur entre sa propre valeur
+            end
+        end
+        
+        function LancerAnalyseLamePushed(app, ~)
+            % Désactiver le bouton pendant le calcul
+            app.LancerAnalyseLameButton.Enable = 'off';
+            app.StatusLameLabel.Text = 'Simulation en cours... Veuillez patienter.';
+            app.StatusLameLabel.FontColor = [1 0 0];
+            drawnow;
+            
+            try
+                % --- Récupération des paramètres UI ---
+                L = app.LameLengthEditField.Value;
+                b = app.LameWidthEditField.Value;
+                h = app.LameThicknessEditField.Value;
+                E = app.LameYoungEditField.Value;
+                masse_echelon_g = app.LameMasseEchelonEditField.Value;
+                
+                % --- Paramètres Fixes (Similaires au script original) ---
+                masse = 61/1000; % masse actionneur kg
+                masse_aimant = 1/1000; % masse aimant kg
+                pos_actionneur = 0.1345; % m
+                c = 0.35443;
+                g = 9.81;
+                Force_echelon = -(masse_echelon_g / 1000) * g;
+                
+                dens = 1850; % Densité Kg/m^3 (approx générique, modifiable)
+                mu = dens*b*h;
+                J = b*h^3/12;
+                
+                nx = 10;
+                dt = 3e-5;
+                temps_simulation = 15; % Augmenté à 15s pour mieux voir l'amortissement
+                nt = round(temps_simulation/dt);
+                
+                dx = L/(nx-1);
+                dx_n = dx/L;
+                idx_force = round(pos_actionneur / dx) + 2;
+                idx_bout = round(L / dx) + 2;
+                
+                % Masse effective
+                mu_eff = mu * ones(1, nx);
+                mu_eff_intrinseque = mu_eff;
+                mu_eff(idx_force) = mu_eff(idx_force) + (masse / dx);
+                mu_eff(nx) = mu_eff(nx) + (masse_aimant / dx);
+                
+                kappa_eff = sqrt(E*J ./ (mu_eff * L^4));
+                mu_simu_eff = kappa_eff * dt / dx_n^2;
+                
+                % Coeffs
+                coeff1 = (2 - 6 * mu_simu_eff.^2);
+                coeff2 = (4 * mu_simu_eff.^2);
+                coeff3 = -mu_simu_eff.^2;
+                
+                alpha = (c * dt) ./ (mu_eff * 2);
+                Facteur_a1 = 1 ./ (alpha + 1);
+                Facteur_a2 = (alpha - 1) ./ (alpha + 1);
+                
+                coeff1_a = coeff1 .* Facteur_a1; 
+                coeff2_a = coeff2 .* Facteur_a1;
+                coeff3_a = coeff3 .* Facteur_a1;
+                effet_gravite_a = (-g * dt^2) .* Facteur_a1;
+                facteur_force_eff = (dt^2 ./ (mu_eff *dx)) .* Facteur_a1;
+                
+                % Force
+                F = zeros(1, nt+50);
+                F(1:end) = Force_echelon; 
+                
+                x  = -dx:dx:L+dx;
+                nx = nx+2;
+                
+                % Init statique avec masse (calcul_pos_repos_avec_masses = true)
+                K = zeros(nx, nx);
+                B = zeros(nx, 1);
+                for i = 3:nx-2
+                    K(i, i-2) = -coeff3_a(i); K(i, i-1) = -coeff2_a(i); K(i, i) = 1 - coeff1_a(i) - Facteur_a2(i); K(i, i+1) = -coeff2_a(i); K(i, i+2) = -coeff3_a(i);
+                    B(i) = effet_gravite_a(i);
+                end
+                K(1, 1) = 1; B(1) = 0; K(2, 2) = 1; B(2) = 0;
+                K(nx-1, nx-3) = 1; K(nx-1, nx-2) = -2; K(nx-1, nx-1) = 1; B(nx-1) = 0;
+                K(nx, nx-2)   = 1; K(nx, nx-1)   = -2; K(nx, nx)   = 1; B(nx)   = 0;
+                
+                w = (K \ B)'; 
+                w_repos = w;
+                z_capteur = w_repos(idx_force) - 0.0075;
+                
+                w_old = w; w_new = zeros(1,nx); w_init = w;
+                pos_bout = zeros(1,nt+1); pos_actionneur = zeros(1,nt+1);
+                
+                % Préparation Figure Lame (UIAxesLameSim)
+                cla(app.UIAxesLameSim);
+                hold(app.UIAxesLameSim, 'on');
+                plot(app.UIAxesLameSim, x, 1000*w_init, 'k--', 'DisplayName', 'Repos');
+                h_line = plot(app.UIAxesLameSim, x, 1000*w_new, 'b-', 'LineWidth', 1.5, 'DisplayName', 'Dynamique');
+                plot(app.UIAxesLameSim, x(idx_force), 0, 'g.', 'MarkerSize', 15);
+                ylim(app.UIAxesLameSim, [-15, 5]);
+                grid(app.UIAxesLameSim, 'on');
+                title(app.UIAxesLameSim, 'Simulation physique de la lame');
+                xlabel(app.UIAxesLameSim, 'x [m]'); ylabel(app.UIAxesLameSim, 'Déflexion [mm]');
+                
+                i_interne = 3:nx-2; 
+                w_new = w; 
+                
+                % Boucle
+                for n = 0:nt 
+                    w_new(i_interne) = coeff1_a(i_interne).*w(i_interne) + ...
+                                       coeff2_a(i_interne).*(w(i_interne+1)+w(i_interne-1)) + ...
+                                       coeff3_a(i_interne).*(w(i_interne+2)+w(i_interne-2)) + ...
+                                       w_old(i_interne).*Facteur_a2(i_interne) + effet_gravite_a(i_interne);
+                    
+                    w_new(idx_force) = w_new(idx_force) + (F(n+1) * facteur_force_eff(idx_force));
+                    w_new(1:2) = 0;                 
+                    w_new(end-1) = 2*w_new(end-2) - w_new(end-3);    
+                    w_new(end) = 2*w_new(end-1) - w_new(end-2);
+                    
+                    w_old = w; w = w_new;
+                    pos_bout(n+1) = w(end);
+                    pos_actionneur(n+1) = w(idx_force); 
+                    
+                    % Affichage dynamique (rafraîchissement ajusté pour la vitesse avec nt plus grand)
+                    if mod(n, 4000) == 0
+                        h_line.YData = 1000 * w_new;
+                        drawnow limitrate;
+                    end
+                end
+                
+                % Distance capteur
+                distance_capteur = pos_actionneur - z_capteur;
+                t_vec = (0:dt:(nt*dt));
+                
+                cla(app.UIAxesCapteurDist);
+                plot(app.UIAxesCapteurDist, t_vec, distance_capteur * 1000, 'r');
+                grid(app.UIAxesCapteurDist, 'on');
+                title(app.UIAxesCapteurDist, 'Distance mesurée par capteur');
+                xlabel(app.UIAxesCapteurDist, 'Temps (s)'); ylabel(app.UIAxesCapteurDist, 'Distance (mm)');
+                
+                % --- AJOUT DE LA LIMITE Y POUR 0g ---
+                if masse_echelon_g == 0
+                    ylim(app.UIAxesCapteurDist, [7.0, 8.0]);
+                else
+                    ylim(app.UIAxesCapteurDist, 'auto');
+                end
+                % ------------------------------------
+                
+                % FFT
+                pos_repos_fft = mean(pos_bout(round(nt/2):end)); % Utiliser la 2e moitié pour la moyenne
+                h_fft = pos_bout - pos_repos_fft; 
+                Fs = 1/dt;               
+                L_sig = length(h_fft);       
+                Y = fft(h_fft);
+                P2 = abs(Y/L_sig);
+                P1 = 20 * log10(P2(1:floor(L_sig/2)+1));
+                P1(2:end-1) = 2*P1(2:end-1); 
+                f_fft = Fs*(0:floor(L_sig/2))/L_sig;
+                
+                cla(app.UIAxesFFT);
+                plot(app.UIAxesFFT, f_fft, P1, 'b-');
+                xlim(app.UIAxesFFT, [0, 100]); % Limite de l'axe des X modifiée
+                grid(app.UIAxesFFT, 'on');
+                title(app.UIAxesFFT, 'Spectre (FFT) de l''extrémité');
+                xlabel(app.UIAxesFFT, 'Fréquence (Hz)'); ylabel(app.UIAxesFFT, 'Amplitude');
+                
+                app.StatusLameLabel.Text = 'Simulation terminée avec succès !';
+                app.StatusLameLabel.FontColor = [0 0.5 0];
+                
+            catch ME
+                app.StatusLameLabel.Text = 'Erreur lors de la simulation.';
+                uialert(app.UIFigure, ['Erreur : ', ME.message], 'Erreur Simulation');
+            end
+            
+            app.LancerAnalyseLameButton.Enable = 'on';
+        end
     end
     
     methods (Access = private)
@@ -495,7 +708,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.InstructionCalibLabel.FontWeight = 'bold';
             app.InstructionCalibLabel.Text = 'Cliquez sur Démarrer pour lancer la séquence.';
             
-            % LED DE STABILITÉ
             app.StableLampLabel = uilabel(app.TabCalibration);
             app.StableLampLabel.Position = [500 700 200 22];
             app.StableLampLabel.FontWeight = 'bold';
@@ -503,7 +715,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             app.StableLamp = uilamp(app.TabCalibration);
             app.StableLamp.Position = [620 700 20 20];
-            app.StableLamp.Color = [0.5 0.5 0.5]; % Gris par défaut
+            app.StableLamp.Color = [0.5 0.5 0.5]; 
             
             app.CalibrationTable = uitable(app.TabCalibration);
             app.CalibrationTable.Position = [50 300 400 400];
@@ -517,7 +729,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             app.DegrePolyLabel = uilabel(app.TabCalibration);
             app.DegrePolyLabel.Position = [500 550 200 22];
-            app.DegrePolyLabel.Text = 'Degré du polynôme (ex: 1 = Droite) :';
+            app.DegrePolyLabel.Text = 'Degré du polynôme :';
             
             app.DegrePolySpinner = uispinner(app.TabCalibration);
             app.DegrePolySpinner.Position = [500 520 100 30];
@@ -603,6 +815,64 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.NumPWMEditField = uieditfield(app.TabParametres, 'text'); app.NumPWMEditField.Position = [Val2 300 150 22]; app.NumPWMEditField.Value = '[1]'; app.NumPWMEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             app.DenPWMLabel = uilabel(app.TabParametres); app.DenPWMLabel.Position = [Col2 270 80 22]; app.DenPWMLabel.Text = 'Filtre Den :';
             app.DenPWMEditField = uieditfield(app.TabParametres, 'text'); app.DenPWMEditField.Position = [Val2 270 150 22]; app.DenPWMEditField.Value = '[5900^2*1e-7^2 3*5900*1e-7 1]'; app.DenPWMEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            % =========================================================
+            % ONGLET 4 : PARAMÈTRES LAME
+            % =========================================================
+            app.TabLame = uitab(app.TabGroup);
+            app.TabLame.Title = '4. Paramètres lame';
+            
+            % --- Panneau de contrôle gauche ---
+            app.PanelLameInputs = uipanel(app.TabLame);
+            app.PanelLameInputs.Title = 'Dimensions & Matériau';
+            app.PanelLameInputs.FontWeight = 'bold';
+            app.PanelLameInputs.Position = [20 20 300 780];
+            
+            app.LameLengthLabel = uilabel(app.PanelLameInputs); app.LameLengthLabel.Position = [10 710 100 22]; app.LameLengthLabel.Text = 'Longueur L (m) :';
+            app.LameLengthEditField = uieditfield(app.PanelLameInputs, 'numeric'); app.LameLengthEditField.Position = [130 710 150 22]; app.LameLengthEditField.Value = 24.3e-2; app.LameLengthEditField.ValueDisplayFormat = '%.4f';
+            
+            app.LameWidthLabel = uilabel(app.PanelLameInputs); app.LameWidthLabel.Position = [10 670 100 22]; app.LameWidthLabel.Text = 'Largeur b (m) :';
+            app.LameWidthEditField = uieditfield(app.PanelLameInputs, 'numeric'); app.LameWidthEditField.Position = [130 670 150 22]; app.LameWidthEditField.Value = 7.08e-2; app.LameWidthEditField.ValueDisplayFormat = '%.4f';
+            
+            app.LameThicknessLabel = uilabel(app.PanelLameInputs); app.LameThicknessLabel.Position = [10 630 110 22]; app.LameThicknessLabel.Text = 'Épaisseur h (m) :';
+            app.LameThicknessEditField = uieditfield(app.PanelLameInputs, 'numeric'); app.LameThicknessEditField.Position = [130 630 150 22]; app.LameThicknessEditField.Value = 1.5875e-3; app.LameThicknessEditField.ValueDisplayFormat = '%.5f';
+            
+            app.LameMaterialLabel = uilabel(app.PanelLameInputs); app.LameMaterialLabel.Position = [10 570 100 22]; app.LameMaterialLabel.Text = 'Matériau :';
+            app.LameMaterialDropDown = uidropdown(app.PanelLameInputs); app.LameMaterialDropDown.Position = [130 570 150 22]; 
+            app.LameMaterialDropDown.Items = {'Fibre de verre (FR4)', 'Aluminium', 'Acier', 'Personnalisé'};
+            app.LameMaterialDropDown.ValueChangedFcn = createCallbackFcn(app, @MateriauDropdownValueChanged, true);
+            
+            app.LameYoungLabel = uilabel(app.PanelLameInputs); app.LameYoungLabel.Position = [10 530 110 22]; app.LameYoungLabel.Text = 'Mod. Young E (Pa) :';
+            app.LameYoungEditField = uieditfield(app.PanelLameInputs, 'numeric'); app.LameYoungEditField.Position = [130 530 150 22]; app.LameYoungEditField.Value = 18.6e9; app.LameYoungEditField.ValueDisplayFormat = '%0.2e';
+            
+            app.LameMasseEchelonLabel = uilabel(app.PanelLameInputs); app.LameMasseEchelonLabel.Position = [10 470 120 22]; app.LameMasseEchelonLabel.Text = 'Masse (g) :';
+            app.LameMasseEchelonLabel.Tooltip = 'Masse ajoutée instantanément pour exciter la lame et voir ses fréquences de résonance.';
+            app.LameMasseEchelonEditField = uieditfield(app.PanelLameInputs, 'numeric'); app.LameMasseEchelonEditField.Position = [130 470 150 22]; app.LameMasseEchelonEditField.Value = 50; 
+            
+            app.LancerAnalyseLameButton = uibutton(app.PanelLameInputs, 'push');
+            app.LancerAnalyseLameButton.Position = [30 380 230 50];
+            app.LancerAnalyseLameButton.Text = 'Lancer Analyse Lame';
+            app.LancerAnalyseLameButton.BackgroundColor = [0.4 0.6 0.9];
+            app.LancerAnalyseLameButton.FontWeight = 'bold';
+            app.LancerAnalyseLameButton.ButtonPushedFcn = createCallbackFcn(app, @LancerAnalyseLamePushed, true);
+            
+            app.StatusLameLabel = uilabel(app.PanelLameInputs);
+            app.StatusLameLabel.Position = [30 350 230 22];
+            app.StatusLameLabel.Text = 'Prêt.';
+            app.StatusLameLabel.HorizontalAlignment = 'center';
+            
+            % --- Graphiques ---
+            app.UIAxesLameSim = uiaxes(app.TabLame);
+            app.UIAxesLameSim.Position = [350 450 800 350];
+            title(app.UIAxesLameSim, 'Simulation physique de la lame');
+            
+            app.UIAxesCapteurDist = uiaxes(app.TabLame);
+            app.UIAxesCapteurDist.Position = [350 50 380 380];
+            title(app.UIAxesCapteurDist, 'Distance mesurée par capteur');
+            
+            app.UIAxesFFT = uiaxes(app.TabLame);
+            app.UIAxesFFT.Position = [770 50 380 380];
+            title(app.UIAxesFFT, 'Spectre (FFT)');
             
             app.UIFigure.Visible = 'on';
         end
