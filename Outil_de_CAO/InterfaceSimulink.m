@@ -20,6 +20,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         DmarrersimulationButton     matlab.ui.control.Button
         ClearButton                 matlab.ui.control.Button
         TareButton                  matlab.ui.control.Button
+        PositionmesureLabel         matlab.ui.control.Label
+        PositionmesureEditField     matlab.ui.control.NumericEditField
         
         UIAxes                      matlab.ui.control.UIAxes 
         UIAxesPosition              matlab.ui.control.UIAxes 
@@ -120,7 +122,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         LiveLine                    
         LiveLinePosition            
         TimeOffset = 0;             
-        TareValue = 0;              
+        TareValue = 0;  
+        LastTareTime = 0;              
         
         % Variables pour la sequence de calibration
         CalibDataMasses = [];
@@ -198,6 +201,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                             app.LiveLinePosition.XData = [app.LiveLinePosition.XData, t_continu];
                             app.LiveLinePosition.YData = [app.LiveLinePosition.YData, val_pos];
                             
+                            % --- NOUVEAU : Envoi de la valeur vers l'interface (en mm) ---
+                            app.PositionmesureEditField.Value = val_pos * 1000;
+                            
                             if t_continu > app.UIAxesPosition.XLim(2)
                                 app.UIAxesPosition.XLim = [0, t_continu + 2];
                             end
@@ -239,10 +245,26 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         end
         
         function TareButtonPushed(app, ~)
-            valeur_actuelle = app.MassemesuregEditField.Value;
-            app.TareValue = app.TareValue + valeur_actuelle;
-            app.LiveLine.YData = app.LiveLine.YData - valeur_actuelle;
-            app.MassemesuregEditField.Value = 0;
+            temps_actuel = now;
+            % Calcule le délai en secondes depuis le dernier clic
+            delai_secondes = (temps_actuel - app.LastTareTime) * 24 * 3600;
+            
+            if delai_secondes < 0.6 % Si double-clic (moins de 600 ms)
+                % --- ANNULATION DE LA TARE ---
+                % On redonne au graphique sa valeur absolue
+                app.LiveLine.YData = app.LiveLine.YData + app.TareValue; 
+                app.TareValue = 0; % On vide la mémoire de la tare
+                app.LastTareTime = 0; % Reset pour éviter un triple-clic buggé
+            else
+                % --- TARE NORMALE ---
+                valeur_actuelle = app.MassemesuregEditField.Value;
+                app.TareValue = app.TareValue + valeur_actuelle;
+                app.LiveLine.YData = app.LiveLine.YData - valeur_actuelle;
+                app.MassemesuregEditField.Value = 0;
+                
+                % On enregistre l'heure de ce clic
+                app.LastTareTime = temps_actuel; 
+            end
         end
         
         function ArrtersimulationButtonPushed(app, ~)
@@ -255,60 +277,74 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         
         function RafrachirButtonPushed(app, ~)
             try
-                status = get_param(app.NomModele,'SimulationStatus');
-                if strcmp(status, 'stopped')
-                    uialert(app.UIFigure, 'La simulation est arrêtée. Mettez le temps de fin à "inf" dans Simulink et redémarrez.', 'Erreur');
-                    return;
-                end
+                % 1. Met la simulation sur pause (le PID reste actif et garde la lame en l'air !)
+                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'pause');
                 
-                % 1. On fige le temps de Simulink une fraction de seconde
-                set_param(app.NomModele, 'SimulationCommand', 'pause');
-                
-                % 2. On injecte la masse et les gains
+                % 2. Envoie la nouvelle masse directement dans le Workspace MATLAB
                 nouvelle_masse = app.EntreMassegEditField.Value;
-                set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(nouvelle_masse));
+                assignin('base', 'masse_ui', nouvelle_masse);
+                
+                % 3. Met à jour les gains de l'interface
                 GainValueChanged(app, []);
                 
-                % 3. On force le solveur à enregistrer la modification
-                set_param(app.NomModele, 'SimulationCommand', 'update');
+                % 4. Force Simulink à lire la nouvelle variable masse_ui
+                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'update');
                 
-                % 4. On relâche la pause instantanément !
-                set_param(app.NomModele, 'SimulationCommand', 'continue');
+                % 5. Relâche la pause instantanément
+                set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'continue');
+                
+                % Relance le chronomètre d'affichage si besoin
+                if strcmp(app.PlotTimer.Running, 'off')
+                    start(app.PlotTimer);
+                end
                 
             catch ME
+                % S'il y a une erreur, on l'affiche dans une fenêtre au lieu de la cacher !
                 uialert(app.UIFigure, ['Erreur lors du rafraîchissement : ', ME.message], 'Erreur');
             end
         end
         
         function DmarrersimulationButtonPushed(app, ~)
             try
+                % 1. On s'assure que le modèle est bien chargé en mémoire
+                load_system(app.NomModele);
+        
+                % 2. On exécute ton script d'initialisation (génère les tables LPV, etc.)
                 evalin('base', 'Initialisation_simulation'); 
                 
-                valeur_masse = num2str(app.EntreMassegEditField.Value);
-                set_param([app.NomModele, '/Masse (g)'], 'Value', valeur_masse);
+                % 3. On envoie la masse initiale choisie dans l'UI vers le Workspace MATLAB
+                % (Assure-toi que le bloc constant dans Simulink a bien "masse_ui" comme valeur)
+                assignin('base', 'masse_ui', app.EntreMassegEditField.Value);
+                
+                % 4. On met à jour les paramètres PID et filtres
                 GainValueChanged(app, []);
+                
+                % 5. On réinitialise les graphiques et les temps pour un nouveau départ
+                app.TimeOffset = 0;
+                app.LiveLine.XData = [];
+                app.LiveLine.YData = [];
+                app.UIAxes.XLim = [0 5]; 
+                app.LiveLinePosition.XData = [];
+                app.LiveLinePosition.YData = [];
+                app.UIAxesPosition.XLim = [0 5]; 
+                
+                % 6. DÉMARRAGE DE LA SIMULATION
+                set_param(app.NomModele, 'SimulationCommand', 'start');
+                
+                % 7. Gestion du chronomètre pour rafraîchir l'affichage
+                if isempty(app.PlotTimer) || ~isvalid(app.PlotTimer)
+                    app.PlotTimer = timer('ExecutionMode', 'fixedRate', ...
+                                          'Period', 0.1, ...
+                                          'TimerFcn', @(~,~)updatePlot(app));
+                end
+                
+                if strcmp(app.PlotTimer.Running, 'off')
+                    start(app.PlotTimer);
+                end
+                
             catch ME
-                uialert(app.UIFigure, ['Erreur au démarrage : ', ME.message], 'Erreur');
-            end
-            
-            app.TimeOffset = 0;
-            app.LiveLine.XData = [];
-            app.LiveLine.YData = [];
-            app.UIAxes.XLim = [0 5]; 
-            app.LiveLinePosition.XData = [];
-            app.LiveLinePosition.YData = [];
-            app.UIAxesPosition.XLim = [0 5]; 
-            
-            set_param(app.NomModele, 'SimulationCommand', 'start');
-            
-            if isempty(app.PlotTimer) || ~isvalid(app.PlotTimer)
-                app.PlotTimer = timer('ExecutionMode', 'fixedRate', ...
-                                      'Period', 0.1, ...
-                                      'TimerFcn', @(~,~)updatePlot(app));
-            end
-            
-            if strcmp(app.PlotTimer.Running, 'off')
-                start(app.PlotTimer);
+                % S'il y a la moindre erreur, une fenêtre pop-up va s'afficher avec le détail !
+                uialert(app.UIFigure, ['Erreur au démarrage : ', ME.message], 'Erreur de Démarrage');
             end
         end
       
@@ -340,14 +376,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.CalibrationTable.Data = table([], [], 'VariableNames', {'Masse (g)', 'Tension brute lue'});
             app.EquationLabel.Text = 'Équation : (En attente)';
             
+            % On place la première masse cible dans la case de l'UI
             masse_req = app.MassesCibles(app.IndexCalibration);
             app.EntreMassegEditField.Value = masse_req; 
             
-            % Séquence Pause -> Modifie -> Update -> Continue
-            set_param(app.NomModele, 'SimulationCommand', 'pause');
-            set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(masse_req));
-            set_param(app.NomModele, 'SimulationCommand', 'update');
-            set_param(app.NomModele, 'SimulationCommand', 'continue');
+            % APPEL AUTOMATIQUE : Déclenche la même logique que le bouton Rafraîchir
+            RafrachirButtonPushed(app, []);
             
             app.InstructionCalibLabel.Text = sprintf('-> La masse de %d g est appliquée ! Enregistrez dès que la LED est VERTE.', masse_req);
             app.InstructionCalibLabel.FontColor = [0 0 0]; 
@@ -375,15 +409,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 
                 CalculerCalibPushed(app, []);
             else
-                % L'interface change la masse TOUTE SEULE sans geler Simulink !
+                % L'interface change la case masse TOUTE SEULE
                 masse_suivante = app.MassesCibles(app.IndexCalibration);
                 app.EntreMassegEditField.Value = masse_suivante;
                 
-                % Séquence Pause -> Modifie -> Update -> Continue
-                set_param(app.NomModele, 'SimulationCommand', 'pause');
-                set_param([app.NomModele, '/Masse (g)'], 'Value', num2str(masse_suivante));
-                set_param(app.NomModele, 'SimulationCommand', 'update');
-                set_param(app.NomModele, 'SimulationCommand', 'continue');
+                % APPEL AUTOMATIQUE : Déclenche la même logique que le bouton Rafraîchir
+                RafrachirButtonPushed(app, []);
                 
                 app.InstructionCalibLabel.Text = sprintf('-> Succès ! La masse de %d g est appliquée. Attendez que la LED redevienne VERTE.', masse_suivante);
             end
@@ -613,6 +644,69 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             app.LancerAnalyseLameButton.Enable = 'on';
         end
+
+       % --- 1. FONCTION POUR LANCER LA SIMULATION FEMM ---
+        function GenererDonneesFEMMPushed(app, ~)
+            app.StatusLameLabel.Text = 'Génération FEMM en cours... Patientez.';
+            app.StatusLameLabel.FontColor = [1 0.5 0]; 
+            drawnow;
+            
+            try
+                dossier_actuel = pwd;
+                chemin_femm_folder = fullfile(pwd, '..', 'FEMM');
+                cd(chemin_femm_folder);
+                
+                chemin_executable_femm = 'C:\femm42\bin\femm.exe'; % Vérifie que c'est bien le chemin sur ton PC
+                nom_script_lua = 'code_analyse_V2.lua'; % TON FICHIER LUA ICI
+                
+                commande = sprintf('"%s" -windowhide -lua "%s"', chemin_executable_femm, nom_script_lua);
+                status = system(commande);
+                
+                cd(dossier_actuel);
+                
+                if status == 0
+                    app.StatusLameLabel.Text = 'Génération terminée !';
+                    app.StatusLameLabel.FontColor = [0 0.5 0]; 
+                    ChargerLUTPushed(app, []); 
+                else
+                    error('Erreur lors de l''exécution de FEMM (code %d).', status);
+                end
+                
+            catch ME
+                cd(dossier_actuel); 
+                app.StatusLameLabel.Text = 'Erreur lors de la génération FEMM.';
+                app.StatusLameLabel.FontColor = [1 0 0];
+                uialert(app.UIFigure, ['Erreur : ', ME.message], 'Erreur FEMM');
+            end
+        end
+        
+        % --- 2. FONCTION POUR LIRE LES DONNÉES GÉNÉRÉES ---
+        function ChargerLUTPushed(app, ~)
+            try
+                % TON FICHIER TEXTE ICI
+                fichier_lut = fullfile(pwd, '..', 'FEMM', 'LUT_main_V2.txt'); 
+                
+                if ~isfile(fichier_lut)
+                    error('Le fichier LUT_main_V2.txt est introuvable.');
+                end
+                
+                opts = detectImportOptions(fichier_lut);
+                donnees_femm = readtable(fichier_lut, opts);
+                
+                position_m = donnees_femm.x_m;        
+                inductance_Lb = donnees_femm.Lb_H_;   
+                force_Kb = donnees_femm.Kb_N_A_;      
+                
+                assignin('base', 'LUT_position', position_m);
+                assignin('base', 'LUT_inductance', inductance_Lb);
+                assignin('base', 'LUT_force', force_Kb);
+                
+                uialert(app.UIFigure, 'Les données FEMM ont été chargées avec succès !', 'Succès');
+                
+            catch ME
+                uialert(app.UIFigure, ['Erreur de lecture : ', ME.message], 'Erreur');
+            end
+        end
     end
     
     methods (Access = private)
@@ -681,14 +775,28 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.MassemesuregEditField.FontWeight = 'bold';
             app.MassemesuregEditField.BackgroundColor = [0.9 0.9 0.9];
             
+            % --- NOUVEAU : Affichage de la position ---
+            app.PositionmesureLabel = uilabel(app.TabAccueil);
+            app.PositionmesureLabel.Position = [X_mid 310 200 22];
+            app.PositionmesureLabel.Text = 'Position mesurée (mm) :';
+            
+            app.PositionmesureEditField = uieditfield(app.TabAccueil, 'numeric');
+            app.PositionmesureEditField.Editable = 'off';
+            app.PositionmesureEditField.Position = [X_mid 270 200 40];
+            app.PositionmesureEditField.FontSize = 18;
+            app.PositionmesureEditField.FontWeight = 'bold';
+            app.PositionmesureEditField.BackgroundColor = [0.9 0.9 0.9];
+            app.PositionmesureEditField.ValueDisplayFormat = '%.3f'; 
+            
+            % --- BOUTONS DÉCALÉS ---
             app.TareButton = uibutton(app.TabAccueil, 'push');
             app.TareButton.ButtonPushedFcn = createCallbackFcn(app, @TareButtonPushed, true);
-            app.TareButton.Position = [X_mid 280 200 40];
+            app.TareButton.Position = [X_mid 200 200 40]; 
             app.TareButton.Text = 'Tare (0)';
             
             app.RafrachirButton = uibutton(app.TabAccueil, 'push');
             app.RafrachirButton.ButtonPushedFcn = createCallbackFcn(app, @RafrachirButtonPushed, true);
-            app.RafrachirButton.Position = [X_mid 210 200 40];
+            app.RafrachirButton.Position = [X_mid 140 200 40]; 
             app.RafrachirButton.Text = 'Rafraîchir Simulink';
             app.RafrachirButton.BackgroundColor = [0.6 0.8 1.0];
             
@@ -861,7 +969,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.StatusLameLabel.Text = 'Prêt.';
             app.StatusLameLabel.HorizontalAlignment = 'center';
             
-            % --- Graphiques ---
+            % --- Graphiques Lame ---
             app.UIAxesLameSim = uiaxes(app.TabLame);
             app.UIAxesLameSim.Position = [350 450 800 350];
             title(app.UIAxesLameSim, 'Simulation physique de la lame');
