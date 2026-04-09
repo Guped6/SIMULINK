@@ -11,7 +11,7 @@ h = 1.5875e-3;   % Hauteur
 L = 24.3e-2;     % Longueur
 E = 18.6e9;      % Module de Young
 dens = 1850;     % Densité Kg/m^3
-mu = dens*b*h;   % Masse linéique kg/m (rho * A_ss)
+mu = dens*b*h;   % Masse linéique kg/m 
 A_b = b*h;       % Aire de la section
 J = b*h^3/12;    % Moment d'inertie (I)
 
@@ -19,31 +19,31 @@ J = b*h^3/12;    % Moment d'inertie (I)
 ne = 20;         % Nombre d'éléments spatiaux
 le = L / ne;     % Longueur d'un élément (l_b)
 nnodes = ne + 1; % Nombre de noeuds
-ndof = 2 * nnodes; % 2 degrés de liberté par noeud (déplacement transversal et rotation)
-n_modes = 3;     % CORRECTION: Déclaré ici pour l'initialisation des tables
-faire_fft = false;
-plot_position = false;
+ndof = 2 * nnodes; % 2 degrés de liberté par noeud (déplacement et rotation)
+n_modes = 3;     % Nombre de modes conservés dans le modèle d'états
+faire_fft = false; %Pour debug
+plot_position = false; %Pour debug
 
 %% Paramètres des masses et forces
 pos_actionneur_et_masse = 0.1345; % Position en mètre
-masse_bobine_et_plaque = 61/1000;
-masse_aimant = 1/1000; % Aimant au bout
+masse_bobine_et_plaque = 61/1000; %S'additionne à la masse pesée
+masse_aimant = 1/1000; % Aimant au bout de la lame
 
-alpha = 0.70886;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
-beta = 0.00025;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+alpha = 0.70;       % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.00023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
-%% 0. Initialiser les matrices 3D pour les tables
-% Plage de masse de 0 à 100g par bonds de 1g
+%% Initialiser les matrices 3D pour le lookuptable
+% Plage de masse: de 0 à 100g par bonds de 1g
 vecteur_masse = 0 : 0.001 : 0.100; 
 N_points = length(vecteur_masse);
 
-% A_ss est de taille (6x6), donc A_table sera (6x6xN_points)
+% A_ss est 6x6, donc A,B,C,D_table sera 6x6xN_points
 A_table = zeros(2*n_modes, 2*n_modes, N_points);
 B_table = zeros(2*n_modes, 1, N_points);
 C_table = zeros(2, 2*n_modes, N_points);
 D_table = zeros(2, 1, N_points);
 
-%% 1. Création des matrices élémentaires de la poutre
+%% 1. Création des matrices locales de la poutre
 k_b = (E*J / le^3) * [12, 6*le, -12, 6*le;
                       6*le, 4*le^2, -6*le, 2*le^2;
                      -12, -6*le, 12, -6*le;
@@ -53,16 +53,17 @@ m_b = (mu * le / 420) * [156, 22*le, 54, -13*le;
                          54, 13*le, 156, -22*le;
                         -13*le, -3*le^2, -22*le, 4*le^2];
 
-%% 2. Assemblage des matrices globales de BASE (sans masses ponctuelles)
+%% 2. Assemblage des matrices globales sans masses ponctuelles
 M_g_base = zeros(ndof, ndof);
 K_g_base = zeros(ndof, ndof);
+
 for i = 1:ne
-    idx = (2*i-1):(2*i+2); % Les 4 DDL concernés par l'élément i
+    idx = (2*i-1):(2*i+2); 
     M_g_base(idx, idx) = M_g_base(idx, idx) + m_b;
     K_g_base(idx, idx) = K_g_base(idx, idx) + k_b;
 end
 
-% Identification des noeuds les plus proches (calculé une seule fois)
+% Identification des noeuds les plus proches de l'actionneur et du bout
 noeud_act = round(pos_actionneur_et_masse / le) + 1;
 ddl_act = 2 * noeud_act - 1; 
 noeud_bout = nnodes;
@@ -74,13 +75,13 @@ idx_bout_reduit = ddl_bout - 2;
 %% 3. Boucle de création de la Lookup Table LPV
 fprintf('Génération de la lookup table...\n');
 for i = 1:N_points
-    % INERTIE : On inclut la masse TOTALE (plaque + masse ajoutée) pour la dynamique
+    % pour l'inertie : On inclut la masse TOTALE (plaque + masse ajoutée)
     masse_actuelle = vecteur_masse(i) + masse_bobine_et_plaque;
     
     M_g = M_g_base;
     K_g = K_g_base;
     
-    % Ajout des masses ponctuelles (Inertie)
+    % Ajout des masses ponctuelles 
     M_g(ddl_act, ddl_act) = M_g(ddl_act, ddl_act) + masse_actuelle;
     M_g(ddl_bout, ddl_bout) = M_g(ddl_bout, ddl_bout) + masse_aimant;
     
@@ -97,7 +98,7 @@ for i = 1:N_points
     [omega_tries, index] = sort(diag(Omega2));
     Phi = Phi(:, index);
     
-    % Troncature
+    % Couper aux modes perceptibles
     Phi_tronque = Phi(:, 1:n_modes);
     
     % Matrices généralisées
@@ -105,7 +106,7 @@ for i = 1:N_points
     K_bar = Phi_tronque' * K_f * Phi_tronque;
     C_bar = Phi_tronque' * C_f * Phi_tronque;
     
-    % Construction du modèle d'état
+    % Construction du modèle statespace
     A_ss = [zeros(n_modes, n_modes), eye(n_modes);
            -inv(M_bar)*K_bar,       -inv(M_bar)*C_bar];
         
@@ -131,15 +132,15 @@ sys_array = ss(A_table, B_table, C_table, D_table);
 sys_array.SamplingGrid = struct('m_var', vecteur_masse);
 fprintf('Lookup table générée avec succès.\n\n');
 
-%% --- TEST TEMPOREL ET STATIQUE POUR UNE MASSE SPÉCIFIQUE ---
+%% TEST TEMPOREL ET STATIQUE POUR UNE MASSE SPÉCIFIQUE (DEBUG!!!)
 % On choisit un index dans la table (ex: index 51 correspond à 50g)
 idx_a_tester = 51; 
 masse_test_simulink = vecteur_masse(idx_a_tester);
 masse_totale_test = masse_test_simulink + masse_bobine_et_plaque;
 fprintf('Test avec masse_simulink = %g g (Masse totale noeud act = %g g)\n', masse_test_simulink*1000, masse_totale_test*1000);
 
-%% 8. Calcul de la position de repos de BASE (Statique sous gravité de la structure)
-g = 9.81; % Accélération gravitationnelle m/s^2
+%% 8. Calcul de la position de repos SANS MASSE SUR PLATEAU 
+g = 9.81; % Accélération gravité m/s^2
 F_gravite_g = zeros(ndof, 1);
 poids_lineique = -mu * g;
 F_elem_grav = poids_lineique * le / 2 * [1; le/6; 1; -le/6]; 
@@ -148,7 +149,7 @@ for i = 1:ne
     F_gravite_g(idx) = F_gravite_g(idx) + F_elem_grav;
 end
 
-% MODIFICATION : On ne compte QUE la gravité de la plaque (61g)
+%On ne compte QUE la gravité de la plaque (61g)
 F_gravite_g(ddl_act) = F_gravite_g(ddl_act) - masse_bobine_et_plaque * g;
 F_gravite_g(ddl_bout) = F_gravite_g(ddl_bout) - masse_aimant * g;
 F_gravite_f = F_gravite_g(ddl_libres);
@@ -156,15 +157,13 @@ K_f_base = K_g_base(ddl_libres, ddl_libres);
 deplacement_statique = K_f_base \ F_gravite_f;
 
 % === CALCUL AUTOMATIQUE DE LA CIBLE POUR 2.16V (AVEC LE VRAI CAPTEUR) ===
-V_cible = 2.16; % Ta nouvelle tension cible au repos
+V_cible = 2.16; % tension cible au repos
 
-% On utilise LE MÊME polynôme que ton script initialisation_simulateur a généré !
-% Le polynôme est P(x) = ax^3 + bx^2 + cx + d. 
-% Pour trouver P(x) = 2.22, on soustrait 2.22 à 'd'.
-coeff_poly = tension_selon_distance; % Importe les coefficients du Workspace
-coeff_poly(end) = coeff_poly(end) - V_cible; % Soustrait la cible au terme constant
 
-% Trouver les racines (positions possibles) du polynôme
+coeff_poly = tension_selon_distance; 
+coeff_poly(end) = coeff_poly(end) - V_cible; 
+
+% Trouver les racines du polynôme
 racines = roots(coeff_poly);
 
 % On garde la racine réelle qui a du sens physiquement
@@ -176,8 +175,7 @@ racines_reelles = racines(imag(racines) == 0);
 [~, idx_min] = min(abs(racines_reelles));
 cible_repos_m = racines_reelles(idx_min);
 
-% === AJUSTEMENT GÉOMÉTRIQUE AU BOUT DE LA LAME ===
-% Puisque le capteur est au BOUT, on ajuste l'encastrement par rapport au BOUT
+% ajustement de référence de position du bout
 hauteur_encastrement_m = cible_repos_m - deplacement_statique(idx_bout_reduit);
 
 repos_actionneur = hauteur_encastrement_m + deplacement_statique(idx_force_reduit);
@@ -188,7 +186,7 @@ fprintf('Position cible pour %g V : %g mm\n', V_cible, cible_repos_m * 1000);
 fprintf('Déflexion à l''actionneur : %g mm\n', repos_actionneur * 1000);
 fprintf('Déflexion au bout de la lame : %g mm\n\n', repos_bout * 1000);
 
-%% 9. Simulation et extraction des données temporelles
+%% POUR DEBUG!!! 9. Simulation et extraction des données temporelles
 dt = 10e-5;             
 temps_simulation = 5;  
 t = 0:dt:temps_simulation; 
@@ -210,7 +208,7 @@ F_ext_sim(1) = F_ext_sim(1) + (amplitude_dirac / dt);
 pos_bout_m2 = y_lsim(:, 1) + repos_bout;
 pos_actionneur_m2 = y_lsim(:, 2) + repos_actionneur; 
 
-%% 10. Affichage des résultats
+%% DEBUG!! 10. Affichage des résultats
 if plot_position
     figure;
     plot(t_out, pos_bout_m2, 'b', t_out, pos_actionneur_m2, 'r');
@@ -221,7 +219,7 @@ if plot_position
     legend('Bout de la lame', 'Actionneur');
 end
 
-%% --- Analyse fréquentielle (FFT) ---
+%% DEBUG!!!! Analyse fréquentielle (FFT) ---
 if faire_fft
     % 1. Analyse pour le bout de la lame (h)
     h = pos_bout_m2 - mean(pos_bout_m2); 
