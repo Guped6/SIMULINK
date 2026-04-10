@@ -150,7 +150,7 @@ for i = 1:ne
     F_gravite_g(idx) = F_gravite_g(idx) + F_elem_grav;
 end
 
-%On ne compte QUE la gravité de la plaque (61g)
+%On prend en compte la gravité de la plaque (61g)
 F_gravite_g(ddl_act) = F_gravite_g(ddl_act) - masse_bobine_et_plaque * g;
 F_gravite_g(ddl_bout) = F_gravite_g(ddl_bout) - masse_aimant * g;
 F_gravite_f = F_gravite_g(ddl_libres);
@@ -171,9 +171,7 @@ racines = roots(coeff_poly);
 % On garde la racine réelle qui a du sens physiquement
 racines_reelles = racines(imag(racines) == 0);
 
-% IMPORTANT : Les données de calibration montrent que plus la tension monte, 
-% plus la distance (en mm) baisse. Le capteur est donc inversé.
-% On cherche la position la plus logique pour ton montage.
+% Les données de calibration montrent que plus la tension monte, plus la distance en mm baisse
 [~, idx_min] = min(abs(racines_reelles));
 cible_repos_m = racines_reelles(idx_min);
 
