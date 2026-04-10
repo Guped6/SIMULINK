@@ -123,7 +123,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         LiveLinePosition            
         TimeOffset = 0;             
         TareValue = 0;  
-        LastTareTime = 0;              
+        LastTareTime = 0;
+        TarePhysicalMass = 0;
+        BufferMasse = [];
         
         % Variables pour la sequence de calibration
         CalibDataMasses = [];
@@ -215,25 +217,36 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                     
                     % 3. Tension pour calibration
                     try
-                        rto_tension = get_param([app.NomModele, '/ScopeTension'],'RuntimeObject');
+                        rto_tension = get_param([app.NomModele, '/Moyennage et calibration/ScopeTension'],'RuntimeObject');
                         if ~isempty(rto_tension)
                             app.DerniereTensionLue = double(rto_tension.InputPort(1).Data);
                         end
                     catch
                     end
                     
-                    % 4. MISE À JOUR DE LA LED DE STABILITÉ
-                    try
-                        rto_stable = get_param([app.NomModele, '/MATLAB Function2'],'RuntimeObject');
-                        if ~isempty(rto_stable)
-                            val_stable = double(rto_stable.OutputPort(2).Data);
-                            if val_stable >= 1
+                    % 4. MISE À JOUR DE LA LED DE STABILITÉ (Calculée par l'interface)
+                    if exist('val_masse', 'var')
+                        % On ajoute la nouvelle masse à notre mémoire
+                        app.BufferMasse = [app.BufferMasse, val_masse];
+                        
+                        % On garde seulement les 5 dernières mesures (0.5 seconde)
+                        if length(app.BufferMasse) > 5
+                            app.BufferMasse(1) = [];
+                        end
+                        
+                        % On vérifie la stabilité seulement si on a assez de données
+                        if length(app.BufferMasse) == 5
+                            % Calcul de l'incertitude (Max - Min de la dernière 1.0 sec)
+                            incertitude = max(app.BufferMasse) - min(app.BufferMasse);
+                            
+                            if incertitude <= 0.15
                                 app.StableLamp.Color = [0 1 0]; % Vert (Stable)
                             else
                                 app.StableLamp.Color = [1 0 0]; % Rouge (Instable)
                             end
+                        else
+                            app.StableLamp.Color = [0.5 0.5 0.5]; % Gris (En attente de données)
                         end
-                    catch
                     end
                     
                     drawnow limitrate; 
@@ -251,20 +264,33 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             % Calcule le délai en secondes depuis le dernier clic
             delai_secondes = (temps_actuel - app.LastTareTime) * 24 * 3600;
             
-            if delai_secondes < 0.6 % Si double-clic (moins de 600 ms)
+            if delai_secondes < 0.6 % Si double-clic (annulation de la tare)
                 % --- ANNULATION DE LA TARE ---
-                % On redonne au graphique sa valeur absolue
+                % 1. Restaure l'historique du graphique
                 app.LiveLine.YData = app.LiveLine.YData + app.TareValue; 
-                app.TareValue = 0; % On vide la mémoire de la tare
-                app.LastTareTime = 0; % Reset pour éviter un triple-clic buggé
+                
+                % 2. Restaure la case d'entrée avec le vrai poids physique total
+                app.EntreMassegEditField.Value = app.EntreMassegEditField.Value + app.TarePhysicalMass;
+                
+                % 3. Vide les mémoires
+                app.TareValue = 0; 
+                app.TarePhysicalMass = 0;
+                app.LastTareTime = 0; 
             else
-                % --- TARE NORMALE ---
-                valeur_actuelle = app.MassemesuregEditField.Value;
-                app.TareValue = app.TareValue + valeur_actuelle;
-                app.LiveLine.YData = app.LiveLine.YData - valeur_actuelle;
+                % --- TARE NORMALE (Simple clic) ---
+                valeur_lue = app.MassemesuregEditField.Value;
+                valeur_entree = app.EntreMassegEditField.Value;
+                
+                % 1. Mémorise pour l'affichage et décale le graphique vers le bas
+                app.TareValue = app.TareValue + valeur_lue;
+                app.LiveLine.YData = app.LiveLine.YData - valeur_lue;
                 app.MassemesuregEditField.Value = 0;
                 
-                % On enregistre l'heure de ce clic
+                % 2. Mémorise la masse physique pour Simulink et remet la case à 0
+                app.TarePhysicalMass = app.TarePhysicalMass + valeur_entree;
+                app.EntreMassegEditField.Value = 0; 
+                
+                % Enregistre l'heure du clic
                 app.LastTareTime = temps_actuel; 
             end
         end
@@ -279,11 +305,11 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         
         function RafrachirButtonPushed(app, ~)
             try
-                % 1. Met la simulation sur pause (le PID reste actif et garde la lame en l'air !)
+                % 1. Met la simulation sur pause (le PID reste actif)
                 set_param('Simulation_balance_poids_variable_realtime2024', 'SimulationCommand', 'pause');
                 
-                % 2. Envoie la nouvelle masse directement dans le Workspace MATLAB
-                nouvelle_masse = app.EntreMassegEditField.Value;
+                % 2. Envoie la masse : Valeur tapée + Masse mémorisée par la Tare
+                nouvelle_masse = app.EntreMassegEditField.Value + app.TarePhysicalMass;
                 assignin('base', 'masse_ui', nouvelle_masse);
                 
                 % 3. Met à jour les gains de l'interface
@@ -301,7 +327,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 end
                 
             catch ME
-                % S'il y a une erreur, on l'affiche dans une fenêtre au lieu de la cacher !
                 uialert(app.UIFigure, ['Erreur lors du rafraîchissement : ', ME.message], 'Erreur');
             end
         end
@@ -311,18 +336,20 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 % 1. On s'assure que le modèle est bien chargé en mémoire
                 load_system(app.NomModele);
         
-                % 2. On exécute ton script d'initialisation (génère les tables LPV, etc.)
+                % 2. On exécute ton script d'initialisation
                 evalin('base', 'Initialisation_simulation'); 
                 
-                % 3. On envoie la masse initiale choisie dans l'UI vers le Workspace MATLAB
-                % (Assure-toi que le bloc constant dans Simulink a bien "masse_ui" comme valeur)
-                assignin('base', 'masse_ui', app.EntreMassegEditField.Value);
+                % 3. On envoie la masse (valeur tapée + tare) vers le Workspace
+                nouvelle_masse = app.EntreMassegEditField.Value + app.TarePhysicalMass;
+                assignin('base', 'masse_ui', nouvelle_masse);
                 
                 % 4. On met à jour les paramètres PID et filtres
                 GainValueChanged(app, []);
                 
                 % 5. On réinitialise les graphiques et les temps pour un nouveau départ
                 app.TimeOffset = 0;
+                app.BufferMasse = [];
+                app.StableLamp.Color = [0.5 0.5 0.5];
                 app.LiveLine.XData = [];
                 app.LiveLine.YData = [];
                 app.UIAxes.XLim = [0 5]; 
@@ -345,7 +372,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 end
                 
             catch ME
-                % S'il y a la moindre erreur, une fenêtre pop-up va s'afficher avec le détail !
                 uialert(app.UIFigure, ['Erreur au démarrage : ', ME.message], 'Erreur de Démarrage');
             end
         end
@@ -374,6 +400,10 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.CalibDataTensions = [];
             app.IndexCalibration = 1;
             app.EnCalibration = true;
+            
+            % --- NOUVEAU : Sécurité ---
+            app.TareValue = 0; 
+            app.TarePhysicalMass = 0;
             
             app.CalibrationTable.Data = table([], [], 'VariableNames', {'Masse (g)', 'Tension brute lue'});
             app.EquationLabel.Text = 'Équation : (En attente)';
@@ -428,16 +458,19 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 return;
             end
             
+            % 1. On lit l'ordre choisi par l'utilisateur
             degre = app.DegrePolySpinner.Value;
+            
+            % Règle mathématique : Il faut au moins (Degré + 1) points pour un polynôme !
             if length(app.CalibDataMasses) <= degre
-                uialert(app.UIFigure, 'Le degré du polynôme est trop élevé pour le nombre de points.', 'Erreur');
+                uialert(app.UIFigure, sprintf('Pour un ordre %d, il faut au moins %d mesures d''étalonnage.', degre, degre + 1), 'Erreur');
                 return;
             end
             
-            % Calcul du polynôme
+            % 2. Calcul du polynôme
             calib_coeffs = polyfit(app.CalibDataTensions, app.CalibDataMasses, degre);
             
-            % Création de la chaîne de caractères pour l'affichage
+            % 3. Création de la chaîne de caractères pour l'affichage
             eq_str = 'y = ';
             for i = 1:length(calib_coeffs)
                 puissance = length(calib_coeffs) - i;
@@ -449,12 +482,18 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
             app.EquationLabel.Text = eq_str;
             
-            % --- MODIFICATION ICI ---
-            % On envoie les coefficients vers le Workspace sous le nom "nouveaux_coeffs"
-            % C'est ce nom que le bloc Polynomial de Simulink utilise !
-            assignin('base', 'nouveaux_coeffs', calib_coeffs);
+            % --- 4. ADAPTATION POUR SIMULINK (Ordre 5 = 6 coefficients) ---
+            taille_requise = 6; 
             
-            % Mise à jour automatique de Simulink si la simulation roule
+            % On crée un tableau rempli de 6 zéros : [0 0 0 0 0 0]
+            coeffs_simulink = zeros(1, taille_requise);
+            % On place nos coefficients calculés à la toute fin du tableau
+            coeffs_simulink(end-length(calib_coeffs)+1 : end) = calib_coeffs;
+            
+            % On envoie le tableau formaté vers le Workspace
+            assignin('base', 'nouveaux_coeffs', coeffs_simulink);
+            
+            % 5. Mise à jour de Simulink en direct
             status = get_param(app.NomModele,'SimulationStatus');
             if strcmp(status, 'running') || strcmp(status, 'paused')
                 set_param(app.NomModele, 'SimulationCommand', 'pause');
@@ -462,7 +501,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 set_param(app.NomModele, 'SimulationCommand', 'continue');
             end
             
-            uialert(app.UIFigure, 'La calibration est terminée ! Les nouveaux coefficients ont été mis à jour dans Simulink.', 'Succès');
+            uialert(app.UIFigure, sprintf('Calibration d''ordre %d terminée !', degre), 'Succès');
         end
         
         % =========================================================
@@ -879,25 +918,36 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             % Régulateur Position
             app.TitrePositionLabel = uilabel(app.TabParametres); app.TitrePositionLabel.Position = [Col1 730 200 22]; app.TitrePositionLabel.FontWeight = 'bold'; app.TitrePositionLabel.Text = 'Régulateur Position';
             app.KpPosLabel = uilabel(app.TabParametres); app.KpPosLabel.Position = [Col1 700 80 22]; app.KpPosLabel.Text = 'Kp :';
-            app.KpPosEditField = uispinner(app.TabParametres); app.KpPosEditField.Position = [Val1 700 90 22]; app.KpPosEditField.Value = 2.325; app.KpPosEditField.Step = 0.1; app.KpPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.KpPosEditField = uispinner(app.TabParametres); app.KpPosEditField.Position = [Val1 700 90 22]; 
+            app.KpPosEditField.Value = -0.0002; % --- MODIFIÉ ICI ---
+            app.KpPosEditField.Step = 0.0001; % J'ai ajusté le pas car la valeur est très petite
+            app.KpPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
             app.KiPosLabel = uilabel(app.TabParametres); app.KiPosLabel.Position = [Col1 670 80 22]; app.KiPosLabel.Text = 'Ki :';
-            app.KiPosEditField = uispinner(app.TabParametres); app.KiPosEditField.Position = [Val1 670 90 22]; app.KiPosEditField.Value = -27.5; app.KiPosEditField.Step = 0.5; app.KiPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.KiPosEditField = uispinner(app.TabParametres); app.KiPosEditField.Position = [Val1 670 90 22]; 
+            app.KiPosEditField.Value = -3; % --- MODIFIÉ ICI ---
+            app.KiPosEditField.Step = 0.5; 
+            app.KiPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
             app.KdPosLabel = uilabel(app.TabParametres); app.KdPosLabel.Position = [Col1 640 80 22]; app.KdPosLabel.Text = 'Kd :';
-            app.KdPosEditField = uispinner(app.TabParametres); app.KdPosEditField.Position = [Val1 640 90 22]; app.KdPosEditField.Value = -0.207; app.KdPosEditField.Step = 0.01; app.KdPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.KdPosEditField = uispinner(app.TabParametres); app.KdPosEditField.Position = [Val1 640 90 22]; 
+            app.KdPosEditField.Value = -0.009; % --- MODIFIÉ ICI ---
+            app.KdPosEditField.Step = 0.001; % J'ai ajusté le pas ici aussi
+            app.KdPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
             % Régulateur Courant
             app.TitreCourantLabel = uilabel(app.TabParametres); app.TitreCourantLabel.Position = [Col1 590 200 22]; app.TitreCourantLabel.FontWeight = 'bold'; app.TitreCourantLabel.Text = 'Régulateur Courant';
             app.KpCouLabel = uilabel(app.TabParametres); app.KpCouLabel.Position = [Col1 560 80 22]; app.KpCouLabel.Text = 'Kp :';
-            app.KpCouEditField = uispinner(app.TabParametres); app.KpCouEditField.Position = [Val1 560 90 22]; app.KpCouEditField.Value = -0.575; app.KpCouEditField.Step = 0.05; app.KpCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
-            app.KiCouLabel = uilabel(app.TabParametres); app.KiCouLabel.Position = [Col1 530 80 22]; app.KiCouLabel.Text = 'Ki :';
-            app.KiCouEditField = uispinner(app.TabParametres); app.KiCouEditField.Position = [Val1 530 90 22]; app.KiCouEditField.Value = -325; app.KiCouEditField.Step = 5; app.KiCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.KpCouEditField = uispinner(app.TabParametres); app.KpCouEditField.Position = [Val1 560 90 22]; 
+            app.KpCouEditField.Value = -0.575; % (Celle-ci était déjà bonne)
+            app.KpCouEditField.Step = 0.05; 
+            app.KpCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
-            % Résolution
-            app.TitreBitsLabel = uilabel(app.TabParametres); app.TitreBitsLabel.Position = [Col1 480 200 22]; app.TitreBitsLabel.FontWeight = 'bold'; app.TitreBitsLabel.Text = 'Résolution (Bits)';
-            app.BitsADCLabel = uilabel(app.TabParametres); app.BitsADCLabel.Position = [Col1 450 80 22]; app.BitsADCLabel.Text = 'ADC :';
-            app.BitsADCEditField = uispinner(app.TabParametres); app.BitsADCEditField.Position = [Val1 450 90 22]; app.BitsADCEditField.Value = 12; app.BitsADCEditField.Step = 1; app.BitsADCEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
-            app.BitsDACLabel = uilabel(app.TabParametres); app.BitsDACLabel.Position = [Col1 420 80 22]; app.BitsDACLabel.Text = 'DAC :';
-            app.BitsDACEditField = uispinner(app.TabParametres); app.BitsDACEditField.Position = [Val1 420 90 22]; app.BitsDACEditField.Value = 12; app.BitsDACEditField.Step = 1; app.BitsDACEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.KiCouLabel = uilabel(app.TabParametres); app.KiCouLabel.Position = [Col1 530 80 22]; app.KiCouLabel.Text = 'Ki :';
+            app.KiCouEditField = uispinner(app.TabParametres); app.KiCouEditField.Position = [Val1 530 90 22]; 
+            app.KiCouEditField.Value = -20; % --- MODIFIÉ ICI ---
+            app.KiCouEditField.Step = 5; 
+            app.KiCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
             % Cond. Acquisition Position
             app.TitreCondPosLabel = uilabel(app.TabParametres); app.TitreCondPosLabel.Position = [Col2 730 200 22]; app.TitreCondPosLabel.FontWeight = 'bold'; app.TitreCondPosLabel.Text = 'Cond. Acquisition (Position)';

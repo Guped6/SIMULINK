@@ -181,23 +181,25 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
 %NOUVELLE VALEUR POUR RÉGULATEUR POSITION
 
-kp_pos = 2.325;
-ki_pos = -27.5;
-kd_pos = -0.207;
-Tech_pos = 0.02;
+%kp_pos = 2.325;
+%ki_pos = -27.5;
+%kd_pos = -0.207;
+%Tech_pos = 0.02;
 
-% kp_pos = 1.45;
-% ki_pos = 0;
-% kd_pos = 0;
+kp_pos = -0.0002;
+ki_pos = -3;
+kd_pos = -0.009;
 
 SORTIE_POS_MIN = -511.0;
 SORTIE_POS_MAX = 512.0;
 
 %NOUVELLE VALEUR POUR RÉGULATEUR COURANT
 
-kp_courant = -0.575; 
-ki_courant = -325;
+%kp_courant = -0.575; 
+%ki_courant = -325;
 Tech = 0.002;
+kp_courant = -0.575; 
+ki_courant = -20;
 
 limVampinf = -511.0;
 limVampmax = 512.0;
@@ -238,7 +240,8 @@ valeurs_u_entree = [-0.4948, 0.1031, 0.6969, 1.2879, 1.8769];
 vraies_masses_g = [0, 25, 50, 75, 100];
 
 % 3. Calcul du polynôme de calibration d'ordre 3
-nouveaux_coeffs = polyfit(valeurs_u_entree, vraies_masses_g, 3);
+coeffs_temp = polyfit(valeurs_u_entree, vraies_masses_g, 3);
+nouveaux_coeffs = [0, 0, coeffs_temp]; % Force un tableau de 6 cases (Ordre 5) pour Simulink
 
 % 4. Affichage du résultat
 disp('Voici tes nouveaux coefficients de calibration :');
@@ -247,4 +250,5 @@ disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 décimales pour un maximum
 
 
 % Pour le bruit ambiant
-BruitMesure = 2.2e-6;
+%BruitMesure = 2.2e-6;
+BruitMesure = 0;

@@ -29,8 +29,8 @@ pos_actionneur_et_masse = 0.1345; % Position en mètre
 masse_bobine_et_plaque = 61/1000; %S'additionne à la masse pesée
 masse_aimant = 1/1000; % Aimant au bout de la lame
 
-alpha = 0.70;       % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
-beta = 0.00023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+alpha = 0.70886;      % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.0023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
 %% Initialiser les matrices 3D pour le lookuptable
 % Plage de masse: de 0 à 100g par bonds de 1g
