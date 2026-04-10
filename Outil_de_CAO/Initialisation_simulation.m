@@ -184,7 +184,7 @@ Gz_pos = c2d(G_pos, 1/600, 'tustin');
 %kp_pos = 2.325;
 %ki_pos = -27.5;
 %kd_pos = -0.207;
-%Tech_pos = 0.02;
+Tech_pos = 0.02;
 
 kp_pos = -0.0002;
 ki_pos = -3;

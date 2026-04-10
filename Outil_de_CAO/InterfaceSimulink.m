@@ -196,10 +196,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                     
                     % 2. Position
                     try
-<<<<<<< Updated upstream
-                        % --- CORRECTION DU 'p' MINUSCULE ICI ---
-=======
->>>>>>> Stashed changes
                         rto_pos = get_param([app.NomModele, '/ScopePositionLame'],'RuntimeObject');
                         if ~isempty(rto_pos)
                             val_pos = double(rto_pos.InputPort(1).Data);
