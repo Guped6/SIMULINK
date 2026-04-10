@@ -29,8 +29,13 @@ pos_actionneur_et_masse = 0.1345; % Position en mètre
 masse_bobine_et_plaque = 61/1000; %S'additionne à la masse pesée
 masse_aimant = 1/1000; % Aimant au bout de la lame
 
+<<<<<<< Updated upstream
 alpha = 0.70;       % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
 beta = 0.00023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+=======
+alpha = 0.70886;          % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+beta = 0.0023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
+>>>>>>> Stashed changes
 
 %% Initialiser les matrices 3D pour le lookuptable
 % Plage de masse: de 0 à 100g par bonds de 1g
@@ -157,7 +162,11 @@ K_f_base = K_g_base(ddl_libres, ddl_libres);
 deplacement_statique = K_f_base \ F_gravite_f;
 
 % === CALCUL AUTOMATIQUE DE LA CIBLE POUR 2.16V (AVEC LE VRAI CAPTEUR) ===
+<<<<<<< Updated upstream
 V_cible = 2.16; % tension cible au repos
+=======
+V_cible = 2.16; % nouvelle tension cible au repos
+>>>>>>> Stashed changes
 
 
 coeff_poly = tension_selon_distance; 
