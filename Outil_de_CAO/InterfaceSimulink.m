@@ -171,7 +171,6 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
         end
         
-        % Mise a jour des graphiques ET de la LED
         function updatePlot(app)
             status = get_param(app.NomModele,'SimulationStatus');
             
@@ -195,7 +194,8 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                     
                     % 2. Position
                     try
-                        rto_pos = get_param([app.NomModele, '/ScopePosition'],'RuntimeObject');
+                        % --- CORRECTION DU 'p' MINUSCULE ICI ---
+                        rto_pos = get_param([app.NomModele, '/ScopePositionLame'],'RuntimeObject');
                         if ~isempty(rto_pos)
                             val_pos = double(rto_pos.InputPort(1).Data);
                             app.LiveLinePosition.XData = [app.LiveLinePosition.XData, t_continu];
@@ -208,7 +208,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                                 app.UIAxesPosition.XLim = [0, t_continu + 2];
                             end
                         end
-                    catch
+                    catch ME
+                        % Si le chemin est mauvais, l'erreur s'affichera dans la console MATLAB !
+                        disp(['Erreur lecture position : ', ME.message]);
                     end
                     
                     % 3. Tension pour calibration
@@ -432,8 +434,10 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 return;
             end
             
+            % Calcul du polynôme
             calib_coeffs = polyfit(app.CalibDataTensions, app.CalibDataMasses, degre);
             
+            % Création de la chaîne de caractères pour l'affichage
             eq_str = 'y = ';
             for i = 1:length(calib_coeffs)
                 puissance = length(calib_coeffs) - i;
@@ -445,8 +449,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
             app.EquationLabel.Text = eq_str;
             
-            assignin('base', 'calib_coeffs', calib_coeffs);
+            % --- MODIFICATION ICI ---
+            % On envoie les coefficients vers le Workspace sous le nom "nouveaux_coeffs"
+            % C'est ce nom que le bloc Polynomial de Simulink utilise !
+            assignin('base', 'nouveaux_coeffs', calib_coeffs);
             
+            % Mise à jour automatique de Simulink si la simulation roule
             status = get_param(app.NomModele,'SimulationStatus');
             if strcmp(status, 'running') || strcmp(status, 'paused')
                 set_param(app.NomModele, 'SimulationCommand', 'pause');
@@ -454,7 +462,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 set_param(app.NomModele, 'SimulationCommand', 'continue');
             end
             
-            uialert(app.UIFigure, 'La calibration est terminée ! Les nouveaux coefficients sont dans le Workspace.', 'Succès');
+            uialert(app.UIFigure, 'La calibration est terminée ! Les nouveaux coefficients ont été mis à jour dans Simulink.', 'Succès');
         end
         
         % =========================================================
