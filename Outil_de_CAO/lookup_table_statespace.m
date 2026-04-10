@@ -32,6 +32,7 @@ masse_aimant = 1/1000; % Aimant au bout de la lame
 alpha = 0.70886;      % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
 beta = 0.0023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
+
 %% Initialiser les matrices 3D pour le lookuptable
 % Plage de masse: de 0 à 100g par bonds de 1g
 vecteur_masse = 0 : 0.001 : 0.100; 
@@ -158,6 +159,7 @@ deplacement_statique = K_f_base \ F_gravite_f;
 
 % === CALCUL AUTOMATIQUE DE LA CIBLE POUR 2.16V (AVEC LE VRAI CAPTEUR) ===
 V_cible = 2.16; % tension cible au repos
+
 
 
 coeff_poly = tension_selon_distance; 
