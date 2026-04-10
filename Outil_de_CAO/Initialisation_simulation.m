@@ -172,39 +172,33 @@ Gz_cou = c2d(G_cou, 1/600, 'tustin');
 
 [num_pid_cou, denom_pid_cou] = tfdata(Gz_cou, 'v');
 
+
 % RÉGULATION POSITION
 G_pos = tf(-6.83293481052641*1023/5, [1 0]);
 Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
 [num_pid_pos, denom_pid_pos] = tfdata(Gz_pos, 'v');
 
-
-%NOUVELLE VALEUR POUR RÉGULATEUR POSITION
-
-%kp_pos = 2.325;
-%ki_pos = -27.5;
-%kd_pos = -0.207;
+kp_pos = 2.325;
+ki_pos = -27.5;
+kd_pos = -0.207;
 Tech_pos = 0.02;
 
-kp_pos = -0.0002;
-ki_pos = -3;
-kd_pos = -0.009;
+%kp_pos = -0.0002;
+%ki_pos = -3;
+%kd_pos = -0.009;
 
 SORTIE_POS_MIN = -511.0;
 SORTIE_POS_MAX = 512.0;
 
-%NOUVELLE VALEUR POUR RÉGULATEUR COURANT
-
-%kp_courant = -0.575; 
-%ki_courant = -325;
-Tech = 0.002;
 kp_courant = -0.575; 
-ki_courant = -20;
+ki_courant = -325;
+Tech = 0.002;
+%kp_courant = -0.575; 
+%ki_courant = -20;
 
 limVampinf = -511.0;
 limVampmax = 512.0;
-
-
 % =========================================================================
 % MODÉLISATION ACTIONNEUR LINÉAIRE
 
@@ -250,5 +244,18 @@ disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 décimales pour un maximum
 
 
 % Pour le bruit ambiant
-%BruitMesure = 2.2e-6;
-BruitMesure = 0;
+BruitMesure = 2.2e-12;
+
+% --- Valeurs par défaut pour les Switchs de test ---
+etat_switch_pos = 1;
+etat_switch_vit = 1;
+etat_boucle_courant = 1;
+etat_boucle_position = 1;
+etat_test_type = 1;
+etat_switch_perturbation = 0;
+
+test_step_val = 49;
+test_step_time = 0.5;
+test_pulse_amp = 66;
+test_pulse_period = 2;
+test_pulse_width = 50;

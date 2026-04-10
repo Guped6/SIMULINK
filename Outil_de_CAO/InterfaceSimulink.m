@@ -22,6 +22,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         TareButton                  matlab.ui.control.Button
         PositionmesureLabel         matlab.ui.control.Label
         PositionmesureEditField     matlab.ui.control.NumericEditField
+        PerturbationButton          matlab.ui.control.StateButton
         
         UIAxes                      matlab.ui.control.UIAxes 
         UIAxesPosition              matlab.ui.control.UIAxes 
@@ -69,7 +70,27 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         NumPosLabel                 matlab.ui.control.Label
         NumPosEditField             matlab.ui.control.EditField 
         DenPosLabel                 matlab.ui.control.Label
-        DenPosEditField             matlab.ui.control.EditField 
+        DenPosEditField             matlab.ui.control.EditField
+
+        PanelTests                  matlab.ui.container.Panel
+        ModeGlobalLabel             matlab.ui.control.Label
+        ModeGlobalDropDown          matlab.ui.control.DropDown
+        TypeTestLabel               matlab.ui.control.Label
+        TypeTestDropDown            matlab.ui.control.DropDown
+        
+        LabelTestStep               matlab.ui.control.Label
+        TestStepValLabel            matlab.ui.control.Label
+        TestStepValEditField        matlab.ui.control.NumericEditField
+        TestStepTimeLabel           matlab.ui.control.Label
+        TestStepTimeEditField       matlab.ui.control.NumericEditField
+        
+        LabelTestPulse              matlab.ui.control.Label
+        TestPulseAmpLabel           matlab.ui.control.Label
+        TestPulseAmpEditField       matlab.ui.control.NumericEditField
+        TestPulsePeriodLabel        matlab.ui.control.Label
+        TestPulsePeriodEditField    matlab.ui.control.NumericEditField
+        TestPulseWidthLabel         matlab.ui.control.Label
+        TestPulseWidthEditField     matlab.ui.control.NumericEditField
         
         TitreCondCouLabel           matlab.ui.control.Label
         GainCouLabel                matlab.ui.control.Label
@@ -167,6 +188,41 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 assignin('base', 'offset_com', app.OffsetPWMEditField.Value);
                 assignin('base', 'num_com', str2num(app.NumPWMEditField.Value)); %#ok<ST2NM>
                 assignin('base', 'denom_com', str2num(app.DenPWMEditField.Value)); %#ok<ST2NM>
+
+                % --- LECTURE DU PANNEAU DE TEST ---
+                % 1. Routage des Switchs selon le mode global
+                mode = app.ModeGlobalDropDown.Value;
+                if strcmp(mode, 'Normal (Tout connecté)')
+                    assignin('base', 'etat_switch_pos', 1);
+                    assignin('base', 'etat_switch_vit', 1);
+                    assignin('base', 'etat_boucle_courant', 1);
+                    assignin('base', 'etat_boucle_position', 1);
+                elseif strcmp(mode, 'Test Courant (Boucle Interne)')
+                    assignin('base', 'etat_switch_pos', 0); % Lame au repos
+                    assignin('base', 'etat_switch_vit', 0); % Vitesse 0
+                    assignin('base', 'etat_boucle_courant', 0); % Ouvre la boucle de courant
+                    assignin('base', 'etat_boucle_position', 1); % Reste fermé (sans impact)
+                elseif strcmp(mode, 'Test Position (Boucle Externe)')
+                    assignin('base', 'etat_switch_pos', 1); % Lame active
+                    assignin('base', 'etat_switch_vit', 1); % Vitesse active
+                    assignin('base', 'etat_boucle_courant', 1); % Courant actif
+                    assignin('base', 'etat_boucle_position', 0); % Ouvre la boucle de position
+                end
+                
+                % 2. Choix du type de test (Statique = 1, Dynamique = 0)
+                if strcmp(app.TypeTestDropDown.Value, 'Statique (Échelon)')
+                    assignin('base', 'etat_test_type', 1);
+                else
+                    assignin('base', 'etat_test_type', 0);
+                end
+                
+                % 3. Envoi des paramètres des signaux
+                assignin('base', 'test_step_val', app.TestStepValEditField.Value);
+                assignin('base', 'test_step_time', app.TestStepTimeEditField.Value);
+                
+                assignin('base', 'test_pulse_amp', app.TestPulseAmpEditField.Value);
+                assignin('base', 'test_pulse_period', app.TestPulsePeriodEditField.Value);
+                assignin('base', 'test_pulse_width', app.TestPulseWidthEditField.Value);
                 
             catch ME
                 disp(['Erreur param : ', ME.message]);
@@ -216,7 +272,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                     
                     % 3. Tension pour calibration
                     try
-                        rto_tension = get_param([app.NomModele, '/Moyennage et calibration/ScopeTension'],'RuntimeObject');
+                        rto_tension = get_param([app.NomModele, '/Calcul de la masse/ScopeTension'],'RuntimeObject');
                         if ~isempty(rto_tension)
                             app.DerniereTensionLue = double(rto_tension.InputPort(1).Data);
                         end
@@ -255,6 +311,36 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 if isvalid(app.PlotTimer) && strcmp(app.PlotTimer.Running, 'on')
                     stop(app.PlotTimer);
                 end
+            end
+        end
+
+        function PerturbationValueChanged(app, ~)
+            % Vérifie si le bouton est enfoncé (1) ou relâché (0)
+            etat = app.PerturbationButton.Value; 
+            
+            try
+                if etat
+                    % Bouton allumé
+                    app.PerturbationButton.Text = 'Perturbation ON';
+                    app.PerturbationButton.BackgroundColor = [1.0 0.4 0.4]; % Rouge clair
+                    assignin('base', 'etat_switch_perturbation', 1);
+                else
+                    % Bouton éteint
+                    app.PerturbationButton.Text = 'Perturbation OFF';
+                    app.PerturbationButton.BackgroundColor = [0.9 0.9 0.9]; % Gris
+                    assignin('base', 'etat_switch_perturbation', 0);
+                end
+                
+                % Si la simulation tourne, on applique le changement en direct !
+                status = get_param(app.NomModele, 'SimulationStatus');
+                if strcmp(status, 'running') || strcmp(status, 'paused')
+                    set_param(app.NomModele, 'SimulationCommand', 'pause');
+                    set_param(app.NomModele, 'SimulationCommand', 'update');
+                    set_param(app.NomModele, 'SimulationCommand', 'continue');
+                end
+            catch ME
+                % Évite de crasher si Simulink n'est pas encore lancé
+                disp(['Erreur perturbation : ', ME.message]);
             end
         end
         
@@ -791,6 +877,14 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.DmarrersimulationButton.Position = [X_mid 700 200 50];
             app.DmarrersimulationButton.Text = 'Démarrer simulation';
             app.DmarrersimulationButton.BackgroundColor = [0.47 0.87 0.47];
+
+            % --- BOUTON PERTURBATION (À côté de Démarrer) ---
+            app.PerturbationButton = uibutton(app.TabAccueil, 'state'); % 'state' fait un bouton on/off
+            app.PerturbationButton.Position = [X_mid + 220, 700, 150, 50]; 
+            app.PerturbationButton.Text = 'Perturbation OFF';
+            app.PerturbationButton.FontWeight = 'bold';
+            app.PerturbationButton.BackgroundColor = [0.9 0.9 0.9];
+            app.PerturbationButton.ValueChangedFcn = createCallbackFcn(app, @PerturbationValueChanged, true);
             
             app.ArrtersimulationButton = uibutton(app.TabAccueil, 'push');
             app.ArrtersimulationButton.ButtonPushedFcn = createCallbackFcn(app, @ArrtersimulationButtonPushed, true);
@@ -981,6 +1075,89 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.DenPWMLabel = uilabel(app.TabParametres); app.DenPWMLabel.Position = [Col2 270 80 22]; app.DenPWMLabel.Text = 'Filtre Den :';
             app.DenPWMEditField = uieditfield(app.TabParametres, 'text'); app.DenPWMEditField.Position = [Val2 270 150 22]; app.DenPWMEditField.Value = '[5900^2*1e-7^2 3*5900*1e-7 1]'; app.DenPWMEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
+            app.PanelTests = uipanel(app.TabParametres);
+            app.PanelTests.Title = 'Configuration des Tests en Boucle Ouverte';
+            app.PanelTests.FontWeight = 'bold';
+            app.PanelTests.FontSize = 14;
+            app.PanelTests.Position = [720, 250, 430, 520]; 
+            
+            % Modes et types (Coordonnées relatives à l'intérieur du panneau)
+            app.ModeGlobalLabel = uilabel(app.PanelTests); 
+            app.ModeGlobalLabel.Position = [20, 460, 150, 22]; 
+            app.ModeGlobalLabel.Text = '1. Mode du système :'; 
+            app.ModeGlobalLabel.FontWeight = 'bold';
+            
+            app.ModeGlobalDropDown = uidropdown(app.PanelTests); 
+            app.ModeGlobalDropDown.Position = [180, 460, 230, 22]; 
+            app.ModeGlobalDropDown.Items = {'Normal (Tout connecté)', 'Test Courant (Boucle Interne)', 'Test Position (Boucle Externe)'};
+            app.ModeGlobalDropDown.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            app.TypeTestLabel = uilabel(app.PanelTests); 
+            app.TypeTestLabel.Position = [20, 410, 150, 22]; 
+            app.TypeTestLabel.Text = '2. Signal injecté :'; 
+            app.TypeTestLabel.FontWeight = 'bold';
+            
+            app.TypeTestDropDown = uidropdown(app.PanelTests); 
+            app.TypeTestDropDown.Position = [180, 410, 230, 22];
+            app.TypeTestDropDown.Items = {'Statique (Échelon)', 'Dynamique (Pulse)'};
+            app.TypeTestDropDown.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            % Paramètres Statiques
+            app.LabelTestStep = uilabel(app.PanelTests); 
+            app.LabelTestStep.Position = [120, 350, 200, 22]; 
+            app.LabelTestStep.Text = '--- Paramètres Statiques ---'; 
+            app.LabelTestStep.FontWeight = 'bold';
+            
+            app.TestStepValLabel = uilabel(app.PanelTests); 
+            app.TestStepValLabel.Position = [20, 310, 150, 22]; 
+            app.TestStepValLabel.Text = 'Amplitude :';
+            
+            app.TestStepValEditField = uieditfield(app.PanelTests, 'numeric'); 
+            app.TestStepValEditField.Position = [180, 310, 100, 22]; 
+            app.TestStepValEditField.Value = 1; 
+            app.TestStepValEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            app.TestStepTimeLabel = uilabel(app.PanelTests); 
+            app.TestStepTimeLabel.Position = [20, 270, 150, 22]; 
+            app.TestStepTimeLabel.Text = 'Tps de départ (s):';
+            
+            app.TestStepTimeEditField = uieditfield(app.PanelTests, 'numeric'); 
+            app.TestStepTimeEditField.Position = [180, 270, 100, 22]; 
+            app.TestStepTimeEditField.Value = 0.5; 
+            app.TestStepTimeEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            % Paramètres Dynamiques
+            app.LabelTestPulse = uilabel(app.PanelTests); 
+            app.LabelTestPulse.Position = [120, 210, 200, 22]; 
+            app.LabelTestPulse.Text = '--- Paramètres Dynamiques ---'; 
+            app.LabelTestPulse.FontWeight = 'bold';
+            
+            app.TestPulseAmpLabel = uilabel(app.PanelTests); 
+            app.TestPulseAmpLabel.Position = [20, 170, 150, 22]; 
+            app.TestPulseAmpLabel.Text = 'Amplitude :';
+            
+            app.TestPulseAmpEditField = uieditfield(app.PanelTests, 'numeric'); 
+            app.TestPulseAmpEditField.Position = [180, 170, 100, 22]; 
+            app.TestPulseAmpEditField.Value = 1; 
+            app.TestPulseAmpEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            app.TestPulsePeriodLabel = uilabel(app.PanelTests); 
+            app.TestPulsePeriodLabel.Position = [20, 130, 150, 22]; 
+            app.TestPulsePeriodLabel.Text = 'Période (s) :';
+            
+            app.TestPulsePeriodEditField = uieditfield(app.PanelTests, 'numeric'); 
+            app.TestPulsePeriodEditField.Position = [180, 130, 100, 22]; 
+            app.TestPulsePeriodEditField.Value = 2; 
+            app.TestPulsePeriodEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            
+            app.TestPulseWidthLabel = uilabel(app.PanelTests); 
+            app.TestPulseWidthLabel.Position = [20, 90, 150, 22]; 
+            app.TestPulseWidthLabel.Text = 'Largeur (%) :';
+            
+            app.TestPulseWidthEditField = uieditfield(app.PanelTests, 'numeric'); 
+            app.TestPulseWidthEditField.Position = [180, 90, 100, 22]; 
+            app.TestPulseWidthEditField.Value = 50; 
+            app.TestPulseWidthEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             % =========================================================
             % ONGLET 4 : PARAMÈTRES LAME
             % =========================================================
