@@ -23,6 +23,10 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         PositionmesureLabel         matlab.ui.control.Label
         PositionmesureEditField     matlab.ui.control.NumericEditField
         PerturbationButton          matlab.ui.control.StateButton
+        VitesseLabel                matlab.ui.control.Label
+        VitesseSlider               matlab.ui.control.Slider
+        ImageTortue                 matlab.ui.control.Image
+        ImageLapin                  matlab.ui.control.Image
         
         UIAxes                      matlab.ui.control.UIAxes 
         UIAxesPosition              matlab.ui.control.UIAxes 
@@ -316,6 +320,26 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 if isvalid(app.PlotTimer) && strcmp(app.PlotTimer.Running, 'on')
                     stop(app.PlotTimer);
                 end
+            end
+        end
+
+        function VitesseSliderChanged(app, ~)
+            % On lit la nouvelle valeur du curseur
+            nouvelle_vitesse = app.VitesseSlider.Value;
+            
+            try
+                % Envoie cette valeur au Workspace de MATLAB
+                assignin('base', 'vitesse_ui', nouvelle_vitesse);
+                
+                % Si la simulation tourne, on met à jour Simulink en direct
+                status = get_param(app.NomModele, 'SimulationStatus');
+                if strcmp(status, 'running') || strcmp(status, 'paused')
+                    set_param(app.NomModele, 'SimulationCommand', 'pause');
+                    set_param(app.NomModele, 'SimulationCommand', 'update');
+                    set_param(app.NomModele, 'SimulationCommand', 'continue');
+                end
+            catch ME
+                disp(['Erreur vitesse : ', ME.message]);
             end
         end
 
@@ -878,6 +902,30 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.PerturbationButton.BackgroundColor = [0.9 0.9 0.9];
             app.PerturbationButton.ValueChangedFcn = createCallbackFcn(app, @PerturbationValueChanged, true);
             
+            % === CONTRÔLE DE VITESSE (TORTUE / LAPIN) ===
+            % 1. Le Texte au-dessus
+            app.VitesseLabel = uilabel(app.TabAccueil); % Change TabAccueil si tu le veux ailleurs
+            app.VitesseLabel.Position = [150, 130, 150, 22]; 
+            app.VitesseLabel.Text = 'Ajustement de la vitesse :';
+            app.VitesseLabel.FontWeight = 'bold';
+            
+            % 2. L'image de la Tortue (à gauche)
+            app.ImageTortue = uiimage(app.TabAccueil);
+            app.ImageTortue.Position = [100, 90, 35, 35]; % [X, Y, Largeur, Hauteur]
+            app.ImageTortue.ImageSource = 'tortue.png'; % Le nom exact de ton fichier
+            
+            % 3. Le Slider au milieu
+            app.VitesseSlider = uislider(app.TabAccueil);
+            app.VitesseSlider.Position = [150, 107, 150, 3]; % Le 3 est l'épaisseur de la ligne
+            app.VitesseSlider.Limits = [1 10]; % Ex: vitesse de 1 (lent) à 10 (rapide)
+            app.VitesseSlider.Value = 5; % Valeur de départ au milieu
+            app.VitesseSlider.ValueChangedFcn = createCallbackFcn(app, @VitesseSliderChanged, true);
+            
+            % 4. L'image du Lapin (à droite)
+            app.ImageLapin = uiimage(app.TabAccueil);
+            app.ImageLapin.Position = [315, 90, 35, 35];
+            app.ImageLapin.ImageSource = 'lapin.png';
+
             app.ArrtersimulationButton = uibutton(app.TabAccueil, 'push');
             app.ArrtersimulationButton.ButtonPushedFcn = createCallbackFcn(app, @ArrtersimulationButtonPushed, true);
             app.ArrtersimulationButton.Position = [X_mid 630 200 50];
@@ -1010,6 +1058,13 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.KiCouLabel = uilabel(app.TabParametres); app.KiCouLabel.Position = [Col1 530 80 22]; app.KiCouLabel.Text = 'Ki :';
             app.KiCouEditField = uispinner(app.TabParametres); app.KiCouEditField.Position = [Val1 530 90 22]; app.KiCouEditField.Value = -20; app.KiCouEditField.Step = 5; app.KiCouEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
+            % Résolution
+            app.TitreBitsLabel = uilabel(app.TabParametres); app.TitreBitsLabel.Position = [Col1 480 200 22]; app.TitreBitsLabel.FontWeight = 'bold'; app.TitreBitsLabel.Text = 'Résolution (Bits)';
+            app.BitsADCLabel = uilabel(app.TabParametres); app.BitsADCLabel.Position = [Col1 450 80 22]; app.BitsADCLabel.Text = 'ADC :';
+            app.BitsADCEditField = uispinner(app.TabParametres); app.BitsADCEditField.Position = [Val1 450 90 22]; app.BitsADCEditField.Value = 12; app.BitsADCEditField.Step = 1; app.BitsADCEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.BitsDACLabel = uilabel(app.TabParametres); app.BitsDACLabel.Position = [Col1 420 80 22]; app.BitsDACLabel.Text = 'DAC :';
+            app.BitsDACEditField = uispinner(app.TabParametres); app.BitsDACEditField.Position = [Val1 420 90 22]; app.BitsDACEditField.Value = 12; app.BitsDACEditField.Step = 1; app.BitsDACEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+
             app.TitreCondPosLabel = uilabel(app.TabParametres); app.TitreCondPosLabel.Position = [Col2 730 200 22]; app.TitreCondPosLabel.FontWeight = 'bold'; app.TitreCondPosLabel.Text = 'Cond. Acquisition (Position)';
             app.GainPosLabel = uilabel(app.TabParametres); app.GainPosLabel.Position = [Col2 700 80 22]; app.GainPosLabel.Text = 'Gain :';
             app.GainPosEditField = uispinner(app.TabParametres); app.GainPosEditField.Position = [Val2 700 90 22]; app.GainPosEditField.Value = 1.4925; app.GainPosEditField.Step = 0.1; app.GainPosEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
