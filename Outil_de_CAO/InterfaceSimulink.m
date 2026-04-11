@@ -154,6 +154,15 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         TempsAEditField        matlab.ui.control.NumericEditField
         TempsBEditField        matlab.ui.control.NumericEditField
         ForceEditField         matlab.ui.control.NumericEditField
+
+
+        % --- Boutons de sauvegarde Lame ---
+        PanelSauvegarde         matlab.ui.container.Panel
+        SaveSet1Button          matlab.ui.control.Button
+        LoadSet1Button          matlab.ui.control.Button
+        SaveSet2Button          matlab.ui.control.Button
+        LoadSet2Button          matlab.ui.control.Button
+
     end
     
     properties (Access = private)
@@ -176,10 +185,98 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         IndexCalibration = 1;
         EnCalibration = false;
         NomModele = 'Simulation_balance_poids_variable_realtime2024';
+
+
+        % --- Mémoire de session pour la lame ---
+        ParamSet1 struct
+        ParamSet2 struct
     end
     
     methods (Access = private)
-        
+        % =========================================================
+        % CALLBACKS : SAUVEGARDE ET CHARGEMENT (ONGLET 4)
+        % =========================================================
+        function SauvegarderParametres(app, setNum)
+            s = struct();
+            % Récupération de tous les champs
+            s.L = app.LameLengthEditField.Value;
+            s.b = app.LameWidthEditField.Value;
+            s.h = app.LameThicknessEditField.Value;
+            s.Mat = app.LameMaterialDropDown.Value;
+            s.E = app.LameYoungEditField.Value;
+            s.dens = app.LameDensityEditField.Value;
+            s.masseE = app.LameMasseEchelonEditField.Value;
+            s.posF = app.PosForceEditField.Value;
+            s.masse = app.MasseEditField.Value;
+            s.c = app.CEditField.Value;
+            s.nx = app.NxEditField.Value;
+            s.dt = app.DtEditField.Value;
+            s.tA = app.TempsAEditField.Value;
+            s.tB = app.TempsBEditField.Value;
+            s.F = app.ForceEditField.Value;
+            
+            % Enregistrement dans la bonne variable
+            if setNum == 1
+                app.ParamSet1 = s;
+                app.StatusLameLabel.Text = 'Configuration 1 sauvegardé en mémoire.';
+            else
+                app.ParamSet2 = s;
+                app.StatusLameLabel.Text = 'Config 2 sauvegardé en mémoire.';
+            end
+            app.StatusLameLabel.FontColor = [0 0.5 0];
+        end
+
+        function ChargerParametres(app, setNum)
+            % Sélection du set
+            if setNum == 1
+                s = app.ParamSet1;
+                nom = 'Configuration 1';
+            else
+                s = app.ParamSet2;
+                nom = 'Config 2';
+            end
+            
+            % Vérification si le set existe
+            if isempty(fieldnames(s))
+                uialert(app.UIFigure, ['Aucun paramètre sauvegardé pour le ', nom, '.'], 'Mémoire vide');
+                return;
+            end
+            
+            % Injection des valeurs
+            app.LameLengthEditField.Value = s.L;
+            app.LameWidthEditField.Value = s.b;
+            app.LameThicknessEditField.Value = s.h;
+            app.LameMaterialDropDown.Value = s.Mat;
+            app.LameYoungEditField.Value = s.E;
+            app.LameDensityEditField.Value = s.dens;
+            app.LameMasseEchelonEditField.Value = s.masseE;
+            app.PosForceEditField.Value = s.posF;
+            app.MasseEditField.Value = s.masse;
+            app.CEditField.Value = s.c;
+            app.NxEditField.Value = s.nx;
+            app.DtEditField.Value = s.dt;
+            app.TempsAEditField.Value = s.tA;
+            app.TempsBEditField.Value = s.tB;
+            app.ForceEditField.Value = s.F;
+            
+            app.StatusLameLabel.Text = [nom, ' chargé avec succès !'];
+            app.StatusLameLabel.FontColor = [0 0 1]; % Bleu pour indiquer le chargement
+        end
+
+        % Routage des boutons
+        function SaveSet1Pushed(app, ~)
+            SauvegarderParametres(app, 1);
+        end
+        function LoadSet1Pushed(app, ~)
+            ChargerParametres(app, 1);
+        end
+        function SaveSet2Pushed(app, ~)
+            SauvegarderParametres(app, 2);
+        end
+        function LoadSet2Pushed(app, ~)
+            ChargerParametres(app, 2);
+        end
+
         % Envoi des parametres vers le Workspace MATLAB
         function GainValueChanged(app, ~)
             try
@@ -1286,6 +1383,37 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.LancerAnalyseLameButton.FontWeight = 'bold';
             app.LancerAnalyseLameButton.ButtonPushedFcn = createCallbackFcn(app, @LancerAnalyseLamePushed, true);
             
+            % =========================================================
+            % PANNEAU DE SAUVEGARDE RAPIDE (ONGLET LAME)
+            % =========================================================
+            app.PanelSauvegarde = uipanel(app.TabLame);
+            app.PanelSauvegarde.Title = 'Sauvegarde Rapide (Session actuelle)';
+            app.PanelSauvegarde.FontWeight = 'bold';
+            app.PanelSauvegarde.Position = [350 805 800 50]; 
+            
+            app.SaveSet1Button = uibutton(app.PanelSauvegarde, 'push');
+            app.SaveSet1Button.Position = [15 5 110 22];
+            app.SaveSet1Button.Text = 'Sauver Configuration 1';
+            app.SaveSet1Button.BackgroundColor = [0.8 0.95 0.8]; 
+            app.SaveSet1Button.ButtonPushedFcn = createCallbackFcn(app, @SaveSet1Pushed, true);
+            
+            app.LoadSet1Button = uibutton(app.PanelSauvegarde, 'push');
+            app.LoadSet1Button.Position = [135 5 110 22];
+            app.LoadSet1Button.Text = 'Charger Configuration 1';
+            app.LoadSet1Button.ButtonPushedFcn = createCallbackFcn(app, @LoadSet1Pushed, true);
+            
+            app.SaveSet2Button = uibutton(app.PanelSauvegarde, 'push');
+            app.SaveSet2Button.Position = [285 5 110 22];
+            app.SaveSet2Button.Text = 'Sauver Config 2';
+            app.SaveSet2Button.BackgroundColor = [0.8 0.85 0.95]; 
+            app.SaveSet2Button.ButtonPushedFcn = createCallbackFcn(app, @SaveSet2Pushed, true);
+            
+            app.LoadSet2Button = uibutton(app.PanelSauvegarde, 'push');
+            app.LoadSet2Button.Position = [405 5 110 22];
+            app.LoadSet2Button.Text = 'Charger Config 2';
+            app.LoadSet2Button.ButtonPushedFcn = createCallbackFcn(app, @LoadSet2Pushed, true);
+
+
             % --- Graphiques Lame ---
             app.UIAxesLameSim = uiaxes(app.TabLame);
             app.UIAxesLameSim.Position = [350 450 800 350];
