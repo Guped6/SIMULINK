@@ -86,7 +86,7 @@ sat_cou_max = 5;
 sat_cou_min = 0;
 
 % =========================================================================
-% MODÉLISATION DU CAPTEUR DE COURANT
+% MODÃ‰LISATION DU CAPTEUR DE COURANT
 
 I_bobine = [-2.5461 -2.5183 -2.4699 -2.4141 -2.2674 -2.1483 -2.0323 -1.9165 -1.8013 -1.6982 ...
       -1.5812 -1.4621 -1.3426 -1.2222 -1.1006 -0.9804 -0.8562 -0.7337 -0.6232 -0.49811 ...
@@ -105,7 +105,7 @@ Gain_Ampli_Puissance = polyfit(I_bobine, I_mesure, 1);
 gain_mod_cou = Gain_Ampli_Puissance(1);
 
 % =========================================================================
-% MODÉLISATION DU CAPTEUR DE POSITION
+% MODÃ‰LISATION DU CAPTEUR DE POSITION
 
 Tension = [1.17 1.29 1.31 1.48 1.7 1.89 2.11 2.16 2.35 2.65 2.82 2.85 ...
      2.95 3.15 3.21 3.34 3.43 3.5 3.5 3.69 3.73 3.87 4 4.05 4.06 ...
@@ -127,7 +127,7 @@ sat_mod_pos_min = 0;
 
 
 
-% OBTENIR UNIQUEMENT LES PARAMÈTRES DE FONCTION TRANSFERT
+% OBTENIR UNIQUEMENT LES PARAMÃˆTRES DE FONCTION TRANSFERT
 
 Kp = -0.69553;
 Tw = 0.013106;
@@ -147,9 +147,9 @@ sat_proc_min = 0;
 ref_pos_proc = 8e-3;
 
 % =========================================================================
-% MODÉLISATION ARDUINO
+% MODÃ‰LISATION ARDUINO
 
-% ACQUISITION DES DONNÉES
+% ACQUISITION DES DONNÃ‰ES
 
 freq_adc = 6000; % Hz
 
@@ -165,7 +165,7 @@ per_pwm = 1/freq_pwm; % s
 
 res_dac = 10; % bits
 
-% RÉGULATION COURANT
+% RÃ‰GULATION COURANT
 
 G_cou = tf(2.1309*[0.0037003 1], [0.0037003 0]);
 Gz_cou = c2d(G_cou, 1/600, 'tustin');
@@ -173,7 +173,7 @@ Gz_cou = c2d(G_cou, 1/600, 'tustin');
 [num_pid_cou, denom_pid_cou] = tfdata(Gz_cou, 'v');
 
 
-% RÉGULATION POSITION
+% RÃ‰GULATION POSITION
 G_pos = tf(-6.83293481052641*1023/5, [1 0]);
 Gz_pos = c2d(G_pos, 1/600, 'tustin');
 
@@ -200,7 +200,7 @@ Tech = 0.002;
 limVampinf = -511.0;
 limVampmax = 512.0;
 % =========================================================================
-% MODÉLISATION ACTIONNEUR LINÉAIRE
+% MODÃ‰LISATION ACTIONNEUR LINÃ‰AIRE
 
 sat_act_max = 5;
 
@@ -218,7 +218,7 @@ Lb_table = LUT_Table{:,4};
 x_table = LUT_Table{:,2};
 
 % =========================================================================
-% PARAMÈTRES DE SIMULATION INHÉRENTS À SIMULINK
+% PARAMÃˆTRES DE SIMULATION INHÃ‰RENTS Ã€ SIMULINK
 
 if ~exist('step_time', 'var')
     step_time = 1/300000; % Valeur par défaut de sécurité
@@ -229,35 +229,34 @@ end
 %calib_coeffs = [-4.148121340281826, 11.452578178670109, 62.262097549696314, 0.5281482801225327];
 calib_coeffs = [-2.434092275043066, 7.200141800877383, 62.790031197474626, 21.34353036401069];
 
-% 1. Les valeurs lues sur ton Display AVANT le polynôme (Signal u)
+% 1. Les valeurs lues sur ton Display AVANT le polynÃ´me (Signal u)
 valeurs_u_entree = [-0.4948, 0.1031, 0.6969, 1.2879, 1.8769]; 
 
-% 2. Les vraies masses cibles en grammes (Ce qu'on veut afficher à la fin)
+% 2. Les vraies masses cibles en grammes (Ce qu'on veut afficher Ã  la fin)
 vraies_masses_g = [0, 25, 50, 75, 100];
 
-% 3. Calcul du polynôme de calibration d'ordre 3
+% 3. Calcul du polynÃ´me de calibration d'ordre 3
 coeffs_temp = polyfit(valeurs_u_entree, vraies_masses_g, 3);
 nouveaux_coeffs = [0, 0, coeffs_temp]; % Force un tableau de 6 cases (Ordre 5) pour Simulink
 
-% 4. Affichage du résultat
+% 4. Affichage du rÃ©sultat
 disp('Voici tes nouveaux coefficients de calibration :');
-disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 décimales pour un maximum de précision
-
+disp(num2str(nouveaux_coeffs, 10)); % Affiche avec 10 dÃ©cimales pour un maximum de prÃ©cision
 
 
 % Pour le bruit ambiant
 BruitMesure = 2.2e-12;
 
-% --- Valeurs par défaut pour les Switchs de test ---
-etat_switch_pos = 1;
-etat_switch_vit = 1;
-etat_boucle_courant = 1;
-etat_boucle_position = 1;
-etat_test_type = 1;
-etat_switch_perturbation = 0;
+% --- Valeurs par dÃ©faut pour les Switchs de test ---
+if ~exist('etat_switch_pos','var'), etat_switch_pos = 1; end
+if ~exist('etat_switch_vit','var'), etat_switch_vit = 1; end
+if ~exist('etat_boucle_courant','var'), etat_boucle_courant = 1; end
+if ~exist('etat_boucle_position','var'), etat_boucle_position = 1; end
+if ~exist('etat_test_type','var'), etat_test_type = 1; end
+if ~exist('etat_switch_perturbation','var'), etat_switch_perturbation = 0; end
 
-test_step_val = 49;
-test_step_time = 0.5;
-test_pulse_amp = 66;
-test_pulse_period = 2;
-test_pulse_width = 50;
+if ~exist('test_step_val','var'), test_step_val = 49; end
+if ~exist('test_step_time','var'), test_step_time = 0.5; end
+if ~exist('test_pulse_amp','var'), test_pulse_amp = 66; end
+if ~exist('test_pulse_period','var'), test_pulse_period = 2; end
+if ~exist('test_pulse_width','var'), test_pulse_width = 50; end
