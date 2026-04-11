@@ -172,12 +172,10 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         LoadSet1Button          matlab.ui.control.Button
         SaveSet2Button          matlab.ui.control.Button
         LoadSet2Button          matlab.ui.control.Button
-<<<<<<< HEAD
-=======
 
         % --- Bouton de synchronisation ---
         SyncSimulinkButton      matlab.ui.control.Button
->>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
+
     end
     
     properties (Access = private)
@@ -1418,32 +1416,32 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.ForceEditField = uieditfield(app.PanelLameInputs,'numeric',...
                 'Position',[160 Y0-340 150 22],'Value',-1);
                 
-<<<<<<< HEAD
+
             app.StatusLameLabel = uilabel(app.PanelLameInputs);
             app.StatusLameLabel.Position = [30 Y0-375 270 22]; 
-=======
+
             % --- BOUTON DE LANCEMENT ET SYNCHRONISATION ---
             app.StatusLameLabel = uilabel(app.PanelLameInputs);
             app.StatusLameLabel.Position = [10 60 310 22]; % Remonté et centré au-dessus des boutons
->>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
+
             app.StatusLameLabel.Text = 'Prêt.';
             app.StatusLameLabel.HorizontalAlignment = 'center';
             
             % Bouton Lancer (Moitié gauche du panneau)
             app.LancerAnalyseLameButton = uibutton(app.PanelLameInputs, 'push');
-<<<<<<< HEAD
+
             app.LancerAnalyseLameButton.Position = [30 Y0-415 270 40]; 
             app.LancerAnalyseLameButton.Text = 'Lancer Analyse Lame';
-=======
+
             app.LancerAnalyseLameButton.Position = [10 10 150 40]; % [X Y Largeur Hauteur]
             app.LancerAnalyseLameButton.Text = 'Lancer Analyse';
->>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
+
             app.LancerAnalyseLameButton.BackgroundColor = [0.4 0.6 0.9];
             app.LancerAnalyseLameButton.FontWeight = 'bold';
             app.LancerAnalyseLameButton.ButtonPushedFcn = createCallbackFcn(app, @LancerAnalyseLamePushed, true);
             
-<<<<<<< HEAD
-=======
+
+
             % Bouton Sync Simulink (Moitié droite du panneau)
             app.SyncSimulinkButton = uibutton(app.PanelLameInputs, 'push');
             app.SyncSimulinkButton.Position = [170 10 150 40];
@@ -1455,7 +1453,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             % =========================================================
             % PANNEAU DE SAUVEGARDE RAPIDE (ONGLET LAME)
             % =========================================================
->>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
+
             app.PanelSauvegarde = uipanel(app.TabLame);
             app.PanelSauvegarde.Title = 'Sauvegarde Rapide (Session actuelle)';
             app.PanelSauvegarde.FontWeight = 'bold';
