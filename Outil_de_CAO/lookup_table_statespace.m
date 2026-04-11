@@ -6,12 +6,22 @@ sat_proc_max = 1;
 sat_proc_min = -1;
 
 %% Paramètres de La poutre et du matériau
-b = 7.08e-2;      % Base
-h = 1.5875e-3;   % Hauteur
-L = 24.3e-2;     % Longueur
-E = 18.6e9;      % Module de Young
-dens = 1850;     % Densité Kg/m^3
-mu = dens*b*h;   % Masse linéique kg/m 
+if ~exist('b', 'var')
+    b = 7.08e-2;      % Base
+end
+if ~exist('h', 'var')
+    h = 1.5875e-3;   % Hauteur
+end
+if ~exist('L', 'var')
+    L = 24.3e-2;     % Longueur
+end
+if ~exist('E', 'var')
+    E = 18.6e9;      % Module de Young
+end
+if ~exist('dens', 'var')
+    dens = 1850;     % Densité Kg/m^3
+end
+    mu = dens*b*h;   % Masse linéique kg/m 
 A_b = b*h;       % Aire de la section
 J = b*h^3/12;    % Moment d'inertie (I)
 
@@ -29,7 +39,9 @@ pos_actionneur_et_masse = 0.1345; % Position en mètre
 masse_bobine_et_plaque = 61/1000; %S'additionne à la masse pesée
 masse_aimant = 1/1000; % Aimant au bout de la lame
 
-alpha = 0.70886;      % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+if ~exist('alpha', 'var')
+    alpha = 0.70886;      % Coefficient de Rayleigh pour l'amortissement externe (résistance à l'air)
+end
 beta = 0.0023;        % Coefficient de Rayleigh pour l'amortissement interne (forces dans le matériel)
 
 

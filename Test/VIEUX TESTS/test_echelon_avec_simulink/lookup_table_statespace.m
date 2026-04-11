@@ -14,6 +14,7 @@ dens = 1850;     % Densité Kg/m^3
 mu = dens*b*h;   % Masse linéique kg/m (rho * A_ss)
 A_b = b*h;       % Aire de la section
 J = b*h^3/12;    % Moment d'inertie (I)
+E
 
 %% Paramètres de modélisation eléments finis
 ne = 20;         % Nombre d'éléments spatiaux
