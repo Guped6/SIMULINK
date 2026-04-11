@@ -172,6 +172,12 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         LoadSet1Button          matlab.ui.control.Button
         SaveSet2Button          matlab.ui.control.Button
         LoadSet2Button          matlab.ui.control.Button
+<<<<<<< HEAD
+=======
+
+        % --- Bouton de synchronisation ---
+        SyncSimulinkButton      matlab.ui.control.Button
+>>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
     end
     
     properties (Access = private)
@@ -775,6 +781,52 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             end
         end
         
+        % =========================================================
+        % ENVOI VERS SIMULINK ET SCRIPT D'INITIALISATION
+        % =========================================================
+        function SyncParametresLameVersWorkspace(app)
+            app.StatusLameLabel.Text = 'Envoi des paramètres...';
+            app.StatusLameLabel.FontColor = [1 0.5 0];
+            drawnow;
+            
+            try
+                % 1. Pousser toutes les variables de l'interface vers le Workspace
+                % ATTENTION : Change le nom entre guillemets (ex: 'L', 'b') 
+                % pour qu'il corresponde EXACTEMENT aux noms utilisés dans ton script lookup_table_statespace.m
+                
+                assignin('base', 'L', app.LameLengthEditField.Value);
+                assignin('base', 'b', app.LameWidthEditField.Value);
+                assignin('base', 'h', app.LameThicknessEditField.Value);
+                assignin('base', 'E', app.LameYoungEditField.Value);
+                assignin('base', 'dens', app.LameDensityEditField.Value);
+                
+                assignin('base', 'alpha', app.CEditField.Value * 2);
+                assignin('base', 'ne', app.NxEditField.Value);
+                %assignin('base', 'dt', app.DtEditField.Value); %!!!!!!!!!!!
+                
+                assignin('base', 'masse_bobine_et_plaque', app.MasseEditField.Value / 1000); % en kg
+                assignin('base', 'pos_actionneur_et_masse', app.PosForceEditField.Value);
+                
+                % 2. Exécuter le script qui génère le State-Space
+                % Cela va rouler le script directement dans le Workspace avec les nouvelles valeurs
+                evalin('base', 'lookup_table_statespace');
+                
+                % 3. Mettre à jour Simulink si le modèle est déjà ouvert/en pause
+                status = get_param(app.NomModele,'SimulationStatus');
+                if strcmp(status, 'running') || strcmp(status, 'paused')
+                    set_param(app.NomModele, 'SimulationCommand', 'update');
+                end
+                
+                app.StatusLameLabel.Text = 'Paramètres envoyés et Init terminée !';
+                app.StatusLameLabel.FontColor = [0 0.5 0];
+                
+            catch ME
+                app.StatusLameLabel.Text = 'Erreur lors de l''initialisation.';
+                app.StatusLameLabel.FontColor = [1 0 0];
+                uialert(app.UIFigure, ['Erreur : ', ME.message], 'Erreur de Script');
+            end
+        end
+
         function LancerAnalyseLamePushed(app, ~)
             app.LancerAnalyseLameButton.Enable = 'off';
             app.StatusLameLabel.Text = 'Simulation en cours... Veuillez patienter.';
@@ -1366,22 +1418,48 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.ForceEditField = uieditfield(app.PanelLameInputs,'numeric',...
                 'Position',[160 Y0-340 150 22],'Value',-1);
                 
+<<<<<<< HEAD
             app.StatusLameLabel = uilabel(app.PanelLameInputs);
             app.StatusLameLabel.Position = [30 Y0-375 270 22]; 
+=======
+            % --- BOUTON DE LANCEMENT ET SYNCHRONISATION ---
+            app.StatusLameLabel = uilabel(app.PanelLameInputs);
+            app.StatusLameLabel.Position = [10 60 310 22]; % Remonté et centré au-dessus des boutons
+>>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
             app.StatusLameLabel.Text = 'Prêt.';
             app.StatusLameLabel.HorizontalAlignment = 'center';
             
+            % Bouton Lancer (Moitié gauche du panneau)
             app.LancerAnalyseLameButton = uibutton(app.PanelLameInputs, 'push');
+<<<<<<< HEAD
             app.LancerAnalyseLameButton.Position = [30 Y0-415 270 40]; 
             app.LancerAnalyseLameButton.Text = 'Lancer Analyse Lame';
+=======
+            app.LancerAnalyseLameButton.Position = [10 10 150 40]; % [X Y Largeur Hauteur]
+            app.LancerAnalyseLameButton.Text = 'Lancer Analyse';
+>>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
             app.LancerAnalyseLameButton.BackgroundColor = [0.4 0.6 0.9];
             app.LancerAnalyseLameButton.FontWeight = 'bold';
             app.LancerAnalyseLameButton.ButtonPushedFcn = createCallbackFcn(app, @LancerAnalyseLamePushed, true);
             
+<<<<<<< HEAD
+=======
+            % Bouton Sync Simulink (Moitié droite du panneau)
+            app.SyncSimulinkButton = uibutton(app.PanelLameInputs, 'push');
+            app.SyncSimulinkButton.Position = [170 10 150 40];
+            app.SyncSimulinkButton.Text = 'Sync & Init SS'; % Texte raccourci pour bien rentrer
+            app.SyncSimulinkButton.BackgroundColor = [1 0.7 0.2]; % Orange
+            app.SyncSimulinkButton.FontWeight = 'bold';
+            app.SyncSimulinkButton.ButtonPushedFcn = createCallbackFcn(app, @(~,~)SyncParametresLameVersWorkspace(app), true);
+            
+            % =========================================================
+            % PANNEAU DE SAUVEGARDE RAPIDE (ONGLET LAME)
+            % =========================================================
+>>>>>>> 04601d55559987a0fb4be791d894e69d585d167d
             app.PanelSauvegarde = uipanel(app.TabLame);
             app.PanelSauvegarde.Title = 'Sauvegarde Rapide (Session actuelle)';
             app.PanelSauvegarde.FontWeight = 'bold';
-            app.PanelSauvegarde.Position = [350 805 800 50]; 
+            app.PanelSauvegarde.Position = [350 805 800 50];
             
             app.SaveSet1Button = uibutton(app.PanelSauvegarde, 'push');
             app.SaveSet1Button.Position = [15 5 110 22];
