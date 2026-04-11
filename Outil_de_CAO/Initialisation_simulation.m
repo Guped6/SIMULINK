@@ -220,7 +220,9 @@ x_table = LUT_Table{:,2};
 % =========================================================================
 % PARAMÈTRES DE SIMULATION INHÉRENTS À SIMULINK
 
-step_time = 1/750000;
+if ~exist('step_time', 'var')
+    step_time = 1/300000; % Valeur par défaut de sécurité
+end
 
 % =========================================================================
 % COEFFICIENTS DE CALIBRATION

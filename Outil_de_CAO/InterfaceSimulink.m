@@ -324,12 +324,15 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         end
 
         function VitesseSliderChanged(app, ~)
-            % On lit la nouvelle valeur du curseur
-            nouvelle_vitesse = app.VitesseSlider.Value;
+            % Le slider va de 1 (Tortue) à 7 (Lapin)
+            index = round(app.VitesseSlider.Value);
+            
+            % Conversion mathématique (1 -> 540000, 9 -> 60000)
+            denominateur = 600000 - (index * 60000); 
             
             try
-                % Envoie cette valeur au Workspace de MATLAB
-                assignin('base', 'vitesse_ui', nouvelle_vitesse);
+                % Envoi du vrai step_time (1/X) au Workspace MATLAB
+                assignin('base', 'step_time', 1 / denominateur);
                 
                 % Si la simulation tourne, on met à jour Simulink en direct
                 status = get_param(app.NomModele, 'SimulationStatus');
@@ -423,11 +426,19 @@ classdef InterfaceSimulink < matlab.apps.AppBase
         function DmarrersimulationButtonPushed(app, ~)
             try
                 load_system(app.NomModele);
+                
+                % 1. On lit le script de base (qui ne va plus écraser notre vitesse)
                 evalin('base', 'Initialisation_simulation'); 
+                
+                % 2. On envoie TOUTES les valeurs de l'interface (Masse, Gains... et VITESSE)
                 nouvelle_masse = app.EntreMassegEditField.Value + app.TarePhysicalMass;
                 assignin('base', 'masse_ui', nouvelle_masse);
                 GainValueChanged(app, []);
                 
+                % ---> LA LIGNE MAGIQUE EST ICI <---
+                VitesseSliderChanged(app, []); 
+                
+                % 3. On nettoie les graphiques pour la nouvelle course
                 app.TimeOffset = 0;
                 app.BufferMasse = [];
                 app.StableLamp.Color = [0.5 0.5 0.5];
@@ -438,16 +449,20 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 app.LiveLinePosition.YData = [];
                 app.UIAxesPosition.XLim = [0 5]; 
                 
+                % 4. DÉMARRAGE DE LA SIMULATION
                 set_param(app.NomModele, 'SimulationCommand', 'start');
                 
+                % 5. Gestion du chronomètre pour rafraîchir l'affichage
                 if isempty(app.PlotTimer) || ~isvalid(app.PlotTimer)
                     app.PlotTimer = timer('ExecutionMode', 'fixedRate', ...
                                           'Period', 0.1, ...
                                           'TimerFcn', @(~,~)updatePlot(app));
                 end
+                
                 if strcmp(app.PlotTimer.Running, 'off')
                     start(app.PlotTimer);
                 end
+                
             catch ME
                 uialert(app.UIFigure, ['Erreur au démarrage : ', ME.message], 'Erreur de Démarrage');
             end
@@ -888,43 +903,22 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.LiveLinePosition = plot(app.UIAxesPosition, NaN, NaN, 'r-', 'LineWidth', 1.5);
             
             X_mid = 750;
+            
+            % =========================================================
+            % 1. BOUTONS PRINCIPAUX DE SIMULATION (HAUT)
+            % =========================================================
             app.DmarrersimulationButton = uibutton(app.TabAccueil, 'push');
             app.DmarrersimulationButton.ButtonPushedFcn = createCallbackFcn(app, @DmarrersimulationButtonPushed, true);
             app.DmarrersimulationButton.Position = [X_mid 700 200 50];
             app.DmarrersimulationButton.Text = 'Démarrer simulation';
             app.DmarrersimulationButton.BackgroundColor = [0.47 0.87 0.47];
 
-            % --- BOUTON PERTURBATION (À côté de Démarrer) ---
-            app.PerturbationButton = uibutton(app.TabAccueil, 'state'); % 'state' fait un bouton on/off
+            app.PerturbationButton = uibutton(app.TabAccueil, 'state'); 
             app.PerturbationButton.Position = [X_mid + 220, 700, 150, 50]; 
             app.PerturbationButton.Text = 'Perturbation OFF';
             app.PerturbationButton.FontWeight = 'bold';
             app.PerturbationButton.BackgroundColor = [0.9 0.9 0.9];
             app.PerturbationButton.ValueChangedFcn = createCallbackFcn(app, @PerturbationValueChanged, true);
-            
-            % === CONTRÔLE DE VITESSE (TORTUE / LAPIN) ===
-            % 1. Le Texte au-dessus
-            app.VitesseLabel = uilabel(app.TabAccueil); % Change TabAccueil si tu le veux ailleurs
-            app.VitesseLabel.Position = [150, 130, 150, 22]; 
-            app.VitesseLabel.Text = 'Ajustement de la vitesse :';
-            app.VitesseLabel.FontWeight = 'bold';
-            
-            % 2. L'image de la Tortue (à gauche)
-            app.ImageTortue = uiimage(app.TabAccueil);
-            app.ImageTortue.Position = [100, 90, 35, 35]; % [X, Y, Largeur, Hauteur]
-            app.ImageTortue.ImageSource = 'tortue.png'; % Le nom exact de ton fichier
-            
-            % 3. Le Slider au milieu
-            app.VitesseSlider = uislider(app.TabAccueil);
-            app.VitesseSlider.Position = [150, 107, 150, 3]; % Le 3 est l'épaisseur de la ligne
-            app.VitesseSlider.Limits = [1 10]; % Ex: vitesse de 1 (lent) à 10 (rapide)
-            app.VitesseSlider.Value = 5; % Valeur de départ au milieu
-            app.VitesseSlider.ValueChangedFcn = createCallbackFcn(app, @VitesseSliderChanged, true);
-            
-            % 4. L'image du Lapin (à droite)
-            app.ImageLapin = uiimage(app.TabAccueil);
-            app.ImageLapin.Position = [315, 90, 35, 35];
-            app.ImageLapin.ImageSource = 'lapin.png';
 
             app.ArrtersimulationButton = uibutton(app.TabAccueil, 'push');
             app.ArrtersimulationButton.ButtonPushedFcn = createCallbackFcn(app, @ArrtersimulationButtonPushed, true);
@@ -937,44 +931,85 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             app.ClearButton.Position = [X_mid 560 200 40]; 
             app.ClearButton.Text = 'Effacer graphiques';
             
+            % =========================================================
+            % 2. AJUSTEMENT DE LA VITESSE
+            % =========================================================
+            Y_vit = 480; % Ligne de base pour la vitesse
+            
+            app.VitesseLabel = uilabel(app.TabAccueil);
+            app.VitesseLabel.Position = [X_mid, Y_vit+60, 200, 22]; 
+            app.VitesseLabel.Text = 'Ajustement de la vitesse :';
+            app.VitesseLabel.FontWeight = 'bold';
+            app.VitesseLabel.HorizontalAlignment = 'center'; 
+            
+            app.ImageTortue = uiimage(app.TabAccueil);
+            app.ImageTortue.Position = [X_mid-20, Y_vit-10, 60, 60]; 
+            app.ImageTortue.ImageSource = 'tortue.png'; 
+            
+            % 3. Slider Vitesse
+            app.VitesseSlider = uislider(app.TabAccueil);
+            app.VitesseSlider.Position = [X_mid+50, Y_vit+20, 100, 3]; 
+            
+            app.VitesseSlider.Limits = [1 9]; 
+            app.VitesseSlider.MajorTicks = [1 2 3 4 5 6 7 8 9];
+            app.VitesseSlider.MajorTickLabels = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+            
+            app.VitesseSlider.Value = 5; % 
+            app.VitesseSlider.ValueChangedFcn = createCallbackFcn(app, @VitesseSliderChanged, true);
+            
+            app.ImageLapin = uiimage(app.TabAccueil);
+            app.ImageLapin.Position = [X_mid+160, Y_vit-10, 60, 60]; 
+            app.ImageLapin.ImageSource = 'lapin.png';
+            
+            % =========================================================
+            % 3. ENTRÉE DE LA MASSE SIMULÉE
+            % =========================================================
             app.EntreMasseKgLabel = uilabel(app.TabAccueil);
-            app.EntreMasseKgLabel.Position = [X_mid 480 200 22];
+            app.EntreMasseKgLabel.Position = [X_mid 410 200 22];
             app.EntreMasseKgLabel.Text = 'Entrée Masse Simulée (g) :';
             
             app.EntreMassegEditField = uieditfield(app.TabAccueil, 'numeric');
-            app.EntreMassegEditField.Position = [X_mid 450 200 35];
+            app.EntreMassegEditField.Position = [X_mid 375 200 35];
             
+            % =========================================================
+            % 4. AFFICHAGE DES RÉSULTATS
+            % =========================================================
+            % Masse
             app.MassemesuregEditFieldLabel = uilabel(app.TabAccueil);
-            app.MassemesuregEditFieldLabel.Position = [X_mid 380 200 22];
+            app.MassemesuregEditFieldLabel.Position = [X_mid 310 200 22];
             app.MassemesuregEditFieldLabel.Text = 'Masse mesurée finale (g) :';
             
             app.MassemesuregEditField = uieditfield(app.TabAccueil, 'numeric');
             app.MassemesuregEditField.Editable = 'off';
-            app.MassemesuregEditField.Position = [X_mid 340 200 40];
+            app.MassemesuregEditField.Position = [X_mid 270 200 40];
             app.MassemesuregEditField.FontSize = 18;
             app.MassemesuregEditField.FontWeight = 'bold';
             app.MassemesuregEditField.BackgroundColor = [0.9 0.9 0.9];
             
+            % Position
             app.PositionmesureLabel = uilabel(app.TabAccueil);
-            app.PositionmesureLabel.Position = [X_mid 310 200 22];
+            app.PositionmesureLabel.Position = [X_mid 210 200 22]; 
             app.PositionmesureLabel.Text = 'Position mesurée (mm) :';
             
             app.PositionmesureEditField = uieditfield(app.TabAccueil, 'numeric');
             app.PositionmesureEditField.Editable = 'off';
-            app.PositionmesureEditField.Position = [X_mid 270 200 40];
+            app.PositionmesureEditField.Position = [X_mid 170 200 40]; 
             app.PositionmesureEditField.FontSize = 18;
             app.PositionmesureEditField.FontWeight = 'bold';
             app.PositionmesureEditField.BackgroundColor = [0.9 0.9 0.9];
             app.PositionmesureEditField.ValueDisplayFormat = '%.3f'; 
             
+            % =========================================================
+            % 5. ACTIONS FINALES (BAS)
+            % =========================================================
             app.TareButton = uibutton(app.TabAccueil, 'push');
             app.TareButton.ButtonPushedFcn = createCallbackFcn(app, @TareButtonPushed, true);
-            app.TareButton.Position = [X_mid 200 200 40]; 
+            app.TareButton.Position = [X_mid 110 200 40]; 
             app.TareButton.Text = 'Tare (0)';
-            
+
             app.RafrachirButton = uibutton(app.TabAccueil, 'push');
             app.RafrachirButton.ButtonPushedFcn = createCallbackFcn(app, @RafrachirButtonPushed, true);
-            app.RafrachirButton.Position = [X_mid 140 200 40]; 
+            app.RafrachirButton.Position = [X_mid 50 200 40]; 
             app.RafrachirButton.Text = 'Rafraîchir Simulink';
             app.RafrachirButton.BackgroundColor = [0.6 0.8 1.0];
             
