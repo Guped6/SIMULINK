@@ -1,0 +1,8 @@
+Voici comment reproduire les tests du prototype dans le simulink: 
+
+1)crisser ca en boucle ouvert position et fermée courant
+
+
+-66  -> Amplitude = -66, Période = 4 s, Largeur = 50 %, Délai = 2 s
++49  -> Amplitude = 49,  Période = 4 s, Largeur = 50 %, Délai = 2 s
++166 -> Amplitude = 166, Période = 4 s, Largeur = 50 %, Délai = 2 s
