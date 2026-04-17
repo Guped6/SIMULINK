@@ -981,7 +981,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
                 xlim(app.UIAxesFFT, [0, 100]); 
                 grid(app.UIAxesFFT, 'on');
                 title(app.UIAxesFFT, 'Spectre (FFT) de l''extrémité');
-                xlabel(app.UIAxesFFT, 'Fréquence (Hz)'); ylabel(app.UIAxesFFT, 'Amplitude');
+                xlabel(app.UIAxesFFT, 'Fréquence (Hz)'); ylabel(app.UIAxesFFT, 'Amplitude (dB)');
                 
                 app.StatusLameLabel.Text = 'Simulation terminée avec succès !';
                 app.StatusLameLabel.FontColor = [0 0.5 0];
@@ -1218,9 +1218,9 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             app.TitreBitsLabel = uilabel(app.TabParametres); app.TitreBitsLabel.Position = [Col1 480 200 22]; app.TitreBitsLabel.FontWeight = 'bold'; app.TitreBitsLabel.Text = 'Résolution (Bits)';
             app.BitsADCLabel = uilabel(app.TabParametres); app.BitsADCLabel.Position = [Col1 450 80 22]; app.BitsADCLabel.Text = 'ADC :';
-            app.BitsADCEditField = uispinner(app.TabParametres); app.BitsADCEditField.Position = [Val1 450 90 22]; app.BitsADCEditField.Value = 12; app.BitsADCEditField.Step = 1; app.BitsADCEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.BitsADCEditField = uispinner(app.TabParametres); app.BitsADCEditField.Position = [Val1 450 90 22]; app.BitsADCEditField.Value = 10; app.BitsADCEditField.Step = 1; app.BitsADCEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             app.BitsDACLabel = uilabel(app.TabParametres); app.BitsDACLabel.Position = [Col1 420 80 22]; app.BitsDACLabel.Text = 'DAC :';
-            app.BitsDACEditField = uispinner(app.TabParametres); app.BitsDACEditField.Position = [Val1 420 90 22]; app.BitsDACEditField.Value = 12; app.BitsDACEditField.Step = 1; app.BitsDACEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
+            app.BitsDACEditField = uispinner(app.TabParametres); app.BitsDACEditField.Position = [Val1 420 90 22]; app.BitsDACEditField.Value = 10; app.BitsDACEditField.Step = 1; app.BitsDACEditField.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
             app.TitreCondPosLabel = uilabel(app.TabParametres); app.TitreCondPosLabel.Position = [Col2 730 200 22]; app.TitreCondPosLabel.FontWeight = 'bold'; app.TitreCondPosLabel.Text = 'Cond. Acquisition (Position)';
             app.GainPosLabel = uilabel(app.TabParametres); app.GainPosLabel.Position = [Col2 700 80 22]; app.GainPosLabel.Text = 'Gain :';
@@ -1265,7 +1265,7 @@ classdef InterfaceSimulink < matlab.apps.AppBase
             
             app.ModeGlobalDropDown = uidropdown(app.PanelTests); 
             app.ModeGlobalDropDown.Position = [180, 460, 230, 22]; 
-            app.ModeGlobalDropDown.Items = {'Normal (Tout connecté)', 'Test Courant (Boucle Interne)', 'Test Position (Boucle Externe)'};
+            app.ModeGlobalDropDown.Items = {'Système complètement asservi', 'Test Courant (Boucle Interne)', 'Test Position (Boucle Externe)'};
             app.ModeGlobalDropDown.ValueChangedFcn = createCallbackFcn(app, @GainValueChanged, true);
             
             app.TypeTestLabel = uilabel(app.PanelTests); 

@@ -21,7 +21,7 @@ end
 if ~exist('dens', 'var')
     dens = 1850;     % Densité Kg/m^3
 end
-    mu = dens*b*h;   % Masse linéique kg/m 
+mu = dens*b*h;   % Masse linéique kg/m 
 A_b = b*h;       % Aire de la section
 J = b*h^3/12;    % Moment d'inertie (I)
 
