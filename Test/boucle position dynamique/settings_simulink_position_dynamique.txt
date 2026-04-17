@@ -1,0 +1,27 @@
+Réglages Simulink pour test dynamique (boucle position + courant fermées)
+
+Masses testées :
+- 0 g
+- 50 g
+- 100 g
+
+Consigne de position :
+243 ↔ 200
+
+Settings :
+- Valeur de base = 243
+- Amplitude = -43
+- Période = 4 s
+- Largeur = 50 %
+- Délai initial = 2 s
+
+Implémentation :
+- Générer un carré 0 / -43
+- Ajouter un offset de +243
+
+Signal attendu :
+- 0–2 s   : 243
+- 2–4 s   : 200
+- 4–6 s   : 243
+- 6–8 s   : 200
+- etc.

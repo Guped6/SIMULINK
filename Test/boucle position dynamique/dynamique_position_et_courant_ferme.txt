@@ -1,0 +1,469 @@
+#pragma once
+#include <Arduino.h>
+#include "buffer_circulaire.h"
+#include "etat_systeme.h"
+
+#ifdef P3
+
+// =====================================================
+// TEST DYNAMIQUE
+// Boucle position FERMEE + boucle courant FERMEE
+// Consigne position = signal carre automatique
+// Logging binaire : Temps(us), Consigne_Pos, Mesure_Pos
+// =====================================================
+
+volatile uint16_t consignePosition = 243;
+const float referenceCou = 512.0f;
+
+// -----------------------------------------------------
+// Reglages utilisateur
+// -----------------------------------------------------
+const float TS_POS = 0.02f;   // 50 Hz
+const float TS_COU = 0.002f;  // 500 Hz
+
+// Gains boucle externe position
+volatile float KP_POS   = 2.325f;
+volatile float KI_POS   = -27.5f;
+volatile float KD_POS   = -0.207f;
+volatile float TAUF_POS = 0.09f;
+
+// Gains boucle interne courant
+volatile float KP_COU = -0.575f;
+volatile float KI_COU = -325.0f;
+
+// Coefficients PIDF position
+volatile float POS_A1 = (4.0f * TAUF_POS) / (TS_POS + 2.0f * TAUF_POS);
+volatile float POS_A2 = (TS_POS - 2.0f * TAUF_POS) / (TS_POS + 2.0f * TAUF_POS);
+
+volatile float POS_B0 = (4.0f * KD_POS + KI_POS * TS_POS * TS_POS + 2.0f * KI_POS * TS_POS * TAUF_POS +
+                         2.0f * KP_POS * TS_POS + 4.0f * KP_POS * TAUF_POS) /
+                        (2.0f * TS_POS + 4.0f * TAUF_POS);
+
+volatile float POS_B1 = (-8.0f * KD_POS + 2.0f * KI_POS * TS_POS * TS_POS - 8.0f * KP_POS * TAUF_POS) /
+                        (2.0f * TS_POS + 4.0f * TAUF_POS);
+
+volatile float POS_B2 = (4.0f * KD_POS + KI_POS * TS_POS * TS_POS - 2.0f * KI_POS * TS_POS * TAUF_POS -
+                         2.0f * KP_POS * TS_POS + 4.0f * KP_POS * TAUF_POS) /
+                        (2.0f * TS_POS + 4.0f * TAUF_POS);
+
+// Coefficients PI courant
+volatile float COU_B0 = KP_COU + 0.5f * KI_COU * TS_COU;
+volatile float COU_B1 = -KP_COU + 0.5f * KI_COU * TS_COU;
+
+// -----------------------------------------------------
+// Variables boucle externe
+// -----------------------------------------------------
+volatile float erreurPreced2Pos = 0.0f;
+volatile float erreurPrecedPos  = 0.0f;
+volatile float erreurActuPos    = 0.0f;
+
+volatile float sortieActuPos    = 0.0f;
+volatile float sortiePrecedPos  = 0.0f;
+volatile float sortiePreced2Pos = 0.0f;
+
+volatile uint8_t compteurExt = 0;
+
+// -----------------------------------------------------
+// Variables boucle interne
+// -----------------------------------------------------
+volatile float erreurActuCou    = 0.0f;
+volatile float erreurPrecedCou  = 0.0f;
+volatile float sortieActuCou    = 0.0f;
+
+volatile float sortieFinalCou   = 0.0f;
+volatile float sortieSatCou     = 0.0f;
+volatile float sortiePrecedCou  = 0.0f;
+
+volatile uint8_t compteurInt = 0;
+volatile float moyenneInt = 0.0f;
+volatile uint32_t sommeInt = 0;
+
+// PWM
+volatile float valeurDutyFloat = 0.0f;
+volatile uint16_t valeurDuty = 0;
+
+// ADC
+volatile bool bonneValADC = 0;
+volatile uint8_t canal = 0;
+volatile bool asservissement = false;
+volatile bool acquisition = false;
+volatile uint16_t adcVal = 0;
+
+bool pret;
+uint16_t bitsADCTransmMasse;
+uint16_t bitsADCTransmCapt;
+
+BufferCirculaire bufferCapteur;
+BufferCirculaire bufferMasse;
+
+bool stable = 0;
+String ligne = "";
+
+// -----------------------------------------------------
+// Signal carre de consigne position
+// 243 <-> 200
+// -----------------------------------------------------
+const uint16_t REF_POS_BASE = 243;
+const int16_t  AMPLITUDE_CARRE_POS = -43;   // 243 + (-43) = 200
+const uint32_t PERIODE_CARRE_MS = 4000UL;
+const uint32_t DELAI_INITIAL_MS = 2000UL;   // premiere chute a 2 s
+
+uint32_t tempsDepartMs = 0;
+uint32_t tempsDepartMicros = 0;
+uint32_t dernierToggleMs = 0;
+volatile bool niveauHautPos = false;
+
+// Logging
+volatile bool emissionActive = false;
+
+// -----------------------------------------------------
+// Reset complet
+// -----------------------------------------------------
+static inline void resetEtatAsservissementComplet() {
+  erreurPreced2Pos = 0.0f;
+  erreurPrecedPos  = 0.0f;
+  erreurActuPos    = 0.0f;
+  sortieActuPos    = 0.0f;
+  sortiePrecedPos  = 0.0f;
+  sortiePreced2Pos = 0.0f;
+  compteurExt      = 0;
+
+  erreurActuCou    = 0.0f;
+  erreurPrecedCou  = 0.0f;
+  sortieActuCou    = 0.0f;
+  sortieFinalCou   = 0.0f;
+  sortieSatCou     = 0.0f;
+  sortiePrecedCou  = 0.0f;
+  compteurInt      = 0;
+
+  moyenneInt       = 0.0f;
+  sommeInt         = 0;
+  valeurDutyFloat  = 0.0f;
+  valeurDuty       = 512;
+
+  bonneValADC      = 0;
+  canal            = 0;
+
+  consignePosition = REF_POS_BASE;
+  niveauHautPos    = false;
+}
+
+// -----------------------------------------------------
+// Envoi binaire : Temps(us), Consigne_Pos, Mesure_Pos
+// -----------------------------------------------------
+static inline void envoyerEchantillonPosition(uint32_t temps_us, uint16_t consigne_pos, uint16_t mesure_pos) {
+  uint8_t paquet[8];
+
+  paquet[0] = (uint8_t)(temps_us & 0xFF);
+  paquet[1] = (uint8_t)((temps_us >> 8) & 0xFF);
+  paquet[2] = (uint8_t)((temps_us >> 16) & 0xFF);
+  paquet[3] = (uint8_t)((temps_us >> 24) & 0xFF);
+
+  paquet[4] = (uint8_t)(consigne_pos & 0xFF);
+  paquet[5] = (uint8_t)((consigne_pos >> 8) & 0xFF);
+
+  paquet[6] = (uint8_t)(mesure_pos & 0xFF);
+  paquet[7] = (uint8_t)((mesure_pos >> 8) & 0xFF);
+
+  Serial.write(paquet, 8);
+}
+
+// -----------------------------------------------------
+// Interface serie
+// S = start
+// A = stop
+// C + 2 octets = changer consigne fixe manuellement
+// -----------------------------------------------------
+void traiterCommandeSerie() {
+  if (Serial.available() > 0) {
+    char c = Serial.read();
+
+    if (c == '\n' || c == '\r') {
+      return;
+    }
+
+    switch (c) {
+      case 'S':
+      case 's':
+        noInterrupts();
+
+        bufferCapteur.clear();
+        bufferMasse.clear();
+        resetEtatAsservissementComplet();
+
+        OCR1B = 512;
+        ADMUX = (ADMUX & 0xE0) | (canal & 0x0F);
+
+        acquisition = true;
+        asservissement = true;
+        emissionActive = true;
+
+        tempsDepartMs = millis();
+        tempsDepartMicros = micros();
+        dernierToggleMs = tempsDepartMs;
+
+        TIMSK3 |= (1 << OCIE3A);
+
+        interrupts();
+        break;
+
+      case 'A':
+      case 'a':
+        noInterrupts();
+
+        asservissement = false;
+        acquisition = false;
+        emissionActive = false;
+
+        resetEtatAsservissementComplet();
+
+        OCR1B = 512;
+        ADMUX = (ADMUX & 0xE0) | (canal & 0x0F);
+        TIMSK3 &= ~(1 << OCIE3A);
+
+        interrupts();
+        break;
+
+      case 'C':
+      case 'c':
+        while (Serial.available() < 2) {}
+        {
+          uint8_t lsb = Serial.read();
+          uint8_t msb = Serial.read();
+          uint16_t nouvelleConsigne = lsb | (msb << 8);
+
+          noInterrupts();
+          consignePosition = nouvelleConsigne;
+          interrupts();
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    while (Serial.available() > 0) {
+      char d = Serial.peek();
+      if (d == '\n' || d == '\r') {
+        Serial.read();
+      } else {
+        break;
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------
+// Timer3 -> declenche ADC
+// -----------------------------------------------------
+ISR(TIMER3_COMPA_vect) {
+  if (!(ADCSRA & (1 << ADSC))) {
+    ADCSRA |= (1 << ADSC);
+  }
+}
+
+// -----------------------------------------------------
+// ADC ISR
+// -----------------------------------------------------
+ISR(ADC_vect) {
+  if (!acquisition) {
+    return;
+  }
+
+  adcVal = ADC;
+
+  // ---------------------------------
+  // A0 = position
+  // ---------------------------------
+  if (canal == 0) {
+    if (bonneValADC) {
+      bufferCapteur.push(adcVal);
+      compteurExt++;
+    }
+
+    if (asservissement) {
+      // 12kHz / 2 / 2 / 60 = 50 Hz
+      if (compteurExt >= 60 && bonneValADC) {
+        erreurActuPos = (float)((int)consignePosition - (int)adcVal);
+
+        sortieActuPos =
+            POS_A1 * sortiePrecedPos +
+            POS_A2 * sortiePreced2Pos +
+            POS_B0 * erreurActuPos +
+            POS_B1 * erreurPrecedPos +
+            POS_B2 * erreurPreced2Pos;
+
+        if (sortieActuPos > 512.0f) {
+          sortieActuPos = 512.0f;
+        }
+        if (sortieActuPos < -511.0f) {
+          sortieActuPos = -511.0f;
+        }
+
+        erreurPreced2Pos = erreurPrecedPos;
+        erreurPrecedPos  = erreurActuPos;
+        sortiePreced2Pos = sortiePrecedPos;
+        sortiePrecedPos  = sortieActuPos;
+
+        compteurExt = 0;
+      }
+    }
+
+    if (bonneValADC) {
+      bonneValADC = 0;
+      canal = 7;
+    } else {
+      bonneValADC = 1;
+      canal = 0;
+    }
+  }
+
+  // ---------------------------------
+  // A7 = courant
+  // ---------------------------------
+  else {
+    if (bonneValADC) {
+      bufferMasse.push(adcVal);
+      compteurInt++;
+    }
+
+    if (asservissement) {
+      // 500 Hz
+      if (compteurInt >= 6 && bonneValADC) {
+        erreurActuCou = (referenceCou + sortieActuPos) - (float)adcVal;
+
+        sortieActuCou = sortiePrecedCou + COU_B0 * erreurActuCou + COU_B1 * erreurPrecedCou;
+
+        sortieSatCou = sortieActuCou;
+        if (sortieActuCou > 512.0f) {
+          sortieSatCou = 512.0f;
+        }
+        if (sortieActuCou < -511.0f) {
+          sortieSatCou = -511.0f;
+        }
+
+        if ((sortieActuCou > 512.0f && erreurActuCou > 0.0f) ||
+            (sortieActuCou < -511.0f && erreurActuCou < 0.0f)) {
+          sortieFinalCou  = sortieSatCou;
+          sortiePrecedCou = sortieSatCou;
+        } else {
+          sortieFinalCou  = sortieSatCou;
+          sortiePrecedCou = sortieActuCou;
+        }
+
+        valeurDutyFloat = 512.0f - sortieFinalCou;
+        if (valeurDutyFloat < 0.0f) {
+          valeurDutyFloat = 0.0f;
+        }
+        if (valeurDutyFloat > 1023.0f) {
+          valeurDutyFloat = 1023.0f;
+        }
+
+        valeurDuty = uint16_t(valeurDutyFloat);
+        OCR1B = valeurDuty;
+
+        erreurPrecedCou = erreurActuCou;
+        compteurInt = 0;
+      }
+    }
+
+    if (bonneValADC) {
+      bonneValADC = 0;
+      canal = 0;
+    } else {
+      bonneValADC = 1;
+      canal = 7;
+    }
+  }
+
+  ADMUX = (ADMUX & 0xE0) | (canal & 0x0F);
+}
+
+// -----------------------------------------------------
+// Setup
+// -----------------------------------------------------
+void setup() {
+  Serial.begin(500000);
+  pinMode(12, OUTPUT);
+  pinMode(8, OUTPUT);
+
+  // ADC
+  ADCSRA = 0;
+  ADCSRA |= (1 << ADEN) | (1 << ADIE) | (1 << ADPS1) | (1 << ADPS2);
+
+  ADMUX = 0;
+  ADMUX |= (1 << REFS0);
+
+  // PWM Timer1
+  noInterrupts();
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCCR1A |= (1 << WGM10) | (1 << WGM11) | (1 << COM1B1);
+  TCCR1B |= (1 << WGM12) | (1 << CS10);
+  OCR1B = 512;
+  interrupts();
+
+  // Timer3 -> ~12 kHz
+  noInterrupts();
+  TCCR3A = 0;
+  TCCR3B = 0;
+  TCCR3B |= (1 << CS30) | (1 << WGM32);
+  OCR3A = 1332;
+  interrupts();
+
+  resetEtatAsservissementComplet();
+}
+
+// -----------------------------------------------------
+// Loop
+// -----------------------------------------------------
+void loop() {
+  traiterCommandeSerie();
+
+  if (asservissement && acquisition) {
+    uint32_t maintenantMs = millis();
+
+    // Carre automatique de consigne position
+    if ((maintenantMs - tempsDepartMs) < DELAI_INITIAL_MS) {
+      noInterrupts();
+      niveauHautPos = false;
+      consignePosition = REF_POS_BASE;
+      interrupts();
+    } else {
+      uint32_t demiPeriode = PERIODE_CARRE_MS / 2UL;
+
+      if ((maintenantMs - dernierToggleMs) >= demiPeriode) {
+        noInterrupts();
+        niveauHautPos = !niveauHautPos;
+
+        if (niveauHautPos) {
+          consignePosition = (uint16_t)(REF_POS_BASE + AMPLITUDE_CARRE_POS);
+        } else {
+          consignePosition = REF_POS_BASE;
+        }
+
+        interrupts();
+        dernierToggleMs = maintenantMs;
+      }
+    }
+
+    // On vide A7 sans l'enregistrer
+    noInterrupts();
+    pret = bufferMasse.pop(bitsADCTransmMasse);
+    interrupts();
+
+    // On enregistre A0 avec timestamp
+    noInterrupts();
+    pret = bufferCapteur.pop(bitsADCTransmCapt);
+    interrupts();
+
+    if (pret && emissionActive) {
+      uint32_t temps_local_us = micros() - tempsDepartMicros;
+      uint16_t consigne_local = consignePosition;
+      uint16_t mesure_local   = bitsADCTransmCapt;
+      envoyerEchantillonPosition(temps_local_us, consigne_local, mesure_local);
+    }
+  }
+}
+
+#endif
